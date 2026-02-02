@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      6.1.0
 // @description  OCR com layout flutuante, linhas numeradas e nomes em vermelho no BB
-// @match        https://app.chatpro.com.br/chat*
+// @match        https://app.tallos.com.br/app/chat*
 // @grant        GM_addStyle
 // @author       GILVAN
 // ==/UserScript==
@@ -1150,16 +1150,61 @@ inputCalc.addEventListener('input', () => {
     };
     document.onmouseup=()=>drag=false;
 
-    /* ========= FLOAT BTN ========= */
-    const btn=document.createElement('button');
-    btn.textContent='📄 OCR';
-    btn.style.cssText=
-        'position:fixed;bottom:20px;right:20px;z-index:999999;padding:10px 14px;border-radius:50px;border:0;background:#303F9F;color:#fff;font-weight:bold;cursor:pointer;';
+   /* ========= FLOAT BTN (MÓVEL) ========= */
+const btn = document.createElement('button');
+btn.textContent = '📄 OCR';
 
-    document.body.appendChild(btn);
+btn.style.cssText = `
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999999;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 0;
+  background: #303F9F;
+  color: #fff;
+  font-weight: bold;
+  cursor: grab;
+  box-shadow: 0 6px 16px rgba(0,0,0,.35);
+`;
 
-    btn.onclick=()=>overlay.style.display='block';
-    closeBtn.onclick=()=>overlay.style.display='none';
+document.body.appendChild(btn);
+
+/* abrir OCR */
+btn.onclick = (e) => {
+  if (btn._arrastando) return; // evita clique ao soltar drag
+  overlay.style.display = 'block';
+};
+
+/* ===== DRAG DO BOTÃO ===== */
+let dragBtn = false, bx = 0, by = 0;
+
+btn.addEventListener('mousedown', e => {
+  dragBtn = true;
+  btn._arrastando = false;
+  bx = e.clientX - btn.offsetLeft;
+  by = e.clientY - btn.offsetTop;
+  btn.style.cursor = 'grabbing';
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', e => {
+  if (!dragBtn) return;
+
+  btn._arrastando = true;
+
+  btn.style.left = (e.clientX - bx) + 'px';
+  btn.style.top  = (e.clientY - by) + 'px';
+  btn.style.right = 'auto';
+  btn.style.bottom = 'auto';
+});
+
+document.addEventListener('mouseup', () => {
+  dragBtn = false;
+  btn.style.cursor = 'grab';
+});
+
 
     /* ========= INPUT ========= */
     const input=document.createElement('input');
