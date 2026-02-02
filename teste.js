@@ -1033,18 +1033,13 @@ topActions.appendChild(calcBtn)
     list.className = 'ocr-list';
 
     const closeBtn = document.createElement('button');
-closeBtn.textContent = '❌ Fechar';
-closeBtn.className = 'btn-green';
+    closeBtn.textContent = '❌ Fechar';
+    closeBtn.className = 'close';
 
-const reportBtn = document.createElement('button');
-reportBtn.textContent = ' Gerar relatório EXCEL';
-reportBtn.className = 'btn-green';
-
-reportBtn.onclick = gerarRelatorioExcel;
-
-closeBtn.addEventListener('click', () => {
-  overlay.style.display = 'none';
-});
+    const reportBtn = document.createElement('button');
+    reportBtn.textContent = ' Gerar relatório EXCEL';
+    reportBtn.className = 'close';
+    reportBtn.onclick = gerarRelatorioExcel;
 
     // 👤 CAMPO AGENTE
     const agenteInput = document.createElement('input');
@@ -1155,61 +1150,75 @@ inputCalc.addEventListener('input', () => {
     };
     document.onmouseup=()=>drag=false;
 
-   /* ========= FLOAT BTN (MÓVEL) ========= */
+    /* ========= FLOAT BTN ========= */
+   // ========= BOTÃO OCR MÓVEL =========
 const btn = document.createElement('button');
 btn.textContent = '📄 OCR';
-
 btn.style.cssText = `
   position: fixed;
   bottom: 20px;
   right: 20px;
   z-index: 999999;
-  padding: 12px 16px;
-  border-radius: 999px;
+  padding: 10px 16px;
+  border-radius: 50px;
   border: 0;
   background: #303F9F;
   color: #fff;
   font-weight: bold;
   cursor: grab;
-  box-shadow: 0 6px 16px rgba(0,0,0,.35);
 `;
 
 document.body.appendChild(btn);
 
-/* abrir OCR */
-btn.onclick = (e) => {
-  if (btn._arrastando) return; // evita clique ao soltar drag
-  overlay.style.display = 'block';
-};
+// 🔁 RESTAURA POSIÇÃO
+const posSalva = JSON.parse(localStorage.getItem('OCR_BTN_POS') || '{}');
+if (posSalva.left) {
+  btn.style.left = posSalva.left;
+  btn.style.top  = posSalva.top;
+  btn.style.bottom = 'auto';
+  btn.style.right  = 'auto';
+}
 
-/* ===== DRAG DO BOTÃO ===== */
-let dragBtn = false, bx = 0, by = 0;
+// 🖱️ DRAG
+let dragging = false;
+let offsetX = 0;
+let offsetY = 0;
 
 btn.addEventListener('mousedown', e => {
-  dragBtn = true;
-  btn._arrastando = false;
-  bx = e.clientX - btn.offsetLeft;
-  by = e.clientY - btn.offsetTop;
+  dragging = true;
   btn.style.cursor = 'grabbing';
+  offsetX = e.clientX - btn.offsetLeft;
+  offsetY = e.clientY - btn.offsetTop;
   e.preventDefault();
 });
 
 document.addEventListener('mousemove', e => {
-  if (!dragBtn) return;
-
-  btn._arrastando = true;
-
-  btn.style.left = (e.clientX - bx) + 'px';
-  btn.style.top  = (e.clientY - by) + 'px';
-  btn.style.right = 'auto';
+  if (!dragging) return;
+  btn.style.left = (e.clientX - offsetX) + 'px';
+  btn.style.top  = (e.clientY - offsetY) + 'px';
   btn.style.bottom = 'auto';
+  btn.style.right  = 'auto';
 });
 
 document.addEventListener('mouseup', () => {
-  dragBtn = false;
+  if (!dragging) return;
+  dragging = false;
   btn.style.cursor = 'grab';
+
+  // 💾 salva posição
+  localStorage.setItem('OCR_BTN_POS', JSON.stringify({
+    left: btn.style.left,
+    top: btn.style.top
+  }));
 });
 
+// 👆 CLIQUE ABRE OCR (sem arrastar)
+btn.addEventListener('click', e => {
+  if (dragging) return;
+  overlay.style.display = 'block';
+});
+
+    closeBtn.onclick=()=>overlay.style.display='none';
 
     /* ========= INPUT ========= */
     const input=document.createElement('input');
