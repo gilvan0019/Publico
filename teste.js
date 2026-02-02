@@ -2719,10 +2719,103 @@ dados.push([
 
         XLSX.writeFile(wb, 'relatorio_ocr.xlsx');
     }
+function regraPrint(texto, body) {
+    const linhas = texto.split('\n');
+
+    let valor = '';
+    let hora  = '';
+    let nome  = '';
+
+    // ❌ palavras que NUNCA podem fazer parte de nome
+    const BLOQUEADAS = [
+  // genéricos / rótulos
+  'DADOS','RECEBEDOR','RECEBIDO','TIPO','CONTA','INFORMAÇÕES','INFORMACOES',
+  'PROCESSANDO','FINALIZADO','DETALHES','DESCRIÇÃO','DESCRICAO',
+
+  // banco / financeiro
+  'BANCO','PIX','TRANSFERENCIA','TRANSFERÊNCIA',
+  'CPF','CNPJ','VALOR','DATA','HORA',
+
+  // empresas
+  'VIAGEM','VIAGENS','TURISMO','AGENCIA','AGÊNCIA',
+  'LTDA','ME','EIRELI','SA','S.A','COMPANHIA',
+  'PAGADOR','EMPRESA'
+];
+
+
+    function nomePessoaFisica(txt) {
+        if (!txt) return false;
+
+        const t = txt.trim();
+        const up = t.toUpperCase();
+
+        // ❌ não pode ter número
+        if (/\d/.test(t)) return false;
+
+        // ❌ CPF explícito ou mascarado
+        if (/CPF|CNPJ/i.test(up)) return false;
+
+        // ❌ só letras
+        if (!/^[A-ZÀ-Ÿ\s]+$/.test(up)) return false;
+
+        const partes = up.split(/\s+/).filter(p => p.length >= 3);
+
+        // ❌ precisa de pelo menos nome + sobrenome
+        if (partes.length < 2) return false;
+
+        // ❌ bloqueadas
+        if (partes.some(p => BLOQUEADAS.includes(p))) return false;
+
+        return true;
+    }
+
+    for (const l of linhas) {
+        const t = l.trim();
+        if (!t) continue;
+
+        // 💰 VALOR
+        if (!valor) {
+            const m = t.match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
+            if (m) {
+                valor = m[0];
+                continue;
+            }
+        }
+
+        // ⏰ HORÁRIO
+        if (!hora) {
+            const m = t.match(/\b\d{2}:\d{2}(:\d{2})?\b/);
+            if (m) {
+                hora = m[0];
+                continue;
+            }
+        }
+
+        // 👤 SOMENTE PESSOA FÍSICA REAL
+        if (!nome && nomePessoaFisica(t)) {
+            nome = t;
+        }
+
+        if (valor && hora && nome) break;
+    }
+
+    renderFinal(body, {
+        nome: nome || '-',                 // 👈 se não achou, NÃO INVENTA
+        hora: removerSegundos(hora) || '-',
+        valor: valor || '-'
+    });
+}
+
 
     /* ========= NUMERA + APLICA ========= */
     function aplicarRegras(body){
-        const texto = body.textContent;
+    const texto = body.textContent;
+
+    // 🖨️ PRINT (CTRL+V) — BLOQUEIO TOTAL
+    if (body.dataset.print === '1') {
+        regraPrint(texto, body);
+        return; // ⛔ PARA TUDO AQUI
+    }
         const linhas = texto.split('\n');
         const banco = identificarBanco(texto);
 
@@ -2971,19 +3064,25 @@ dados.push([
         return body;
     }
 
-    async function processFile(file){
-        const body=criarDoc(file.name);
-        body.dataset.nomeArquivo = file.name;
+    async function processFile(file, isPrint = false){
+    const body = criarDoc(file.name);
+    body.dataset.nomeArquivo = file.name;
 
-        body.closest('.doc').setAttribute('data-chave', chaveArquivo(file));
-        body.textContent='🔍 Processando...\n';
-        if(file.type.includes('pdf')) await ocrPDF(file,body);
-        else await ocrImg(file,body);
-        body.textContent+='\n✅ Finalizado';
-        aplicarRegras(body);
-        atualizarTotalTela();
-
+    if (isPrint) {
+        body.dataset.print = '1'; // 🖨️ MARCA PRINT
     }
+
+    body.closest('.doc').setAttribute('data-chave', chaveArquivo(file));
+    body.textContent = '🔍 Processando...\n';
+
+    if (file.type.includes('pdf')) await ocrPDF(file, body);
+    else await ocrImg(file, body);
+
+    body.textContent += '\n✅ Finalizado';
+    aplicarRegras(body);
+    atualizarTotalTela();
+}
+
 
     async function ocrImg(file,target){
         const {data}=await Tesseract.recognize(file,'por');
@@ -3007,12 +3106,12 @@ dados.push([
         }
     }
     /* ========= PASTE ========= */
-    document.addEventListener('paste',e=>{
-        for(const i of e.clipboardData?.items||[]){
-            if(i.type.startsWith('image/')){
-                processFiles([i.getAsFile()]);
-
-            }
+    document.addEventListener('paste', e => {
+    for (const i of e.clipboardData?.items || []) {
+        if (i.type.startsWith('image/')) {
+            processFile(i.getAsFile(), true); // 🔥 PRINT ISOLADO
         }
-    });
+    }
+});
+
 })();
