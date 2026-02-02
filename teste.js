@@ -1044,8 +1044,14 @@ topActions.appendChild(calcBtn)
     // 👤 CAMPO AGENTE
     const agenteInput = document.createElement('input');
     agenteInput.placeholder = 'Nome do agente';
-    agenteInput.value = ' GILVAN LIMA';
+    agenteInput.value = localStorage.getItem('OCR_AGENTE_NOME') || 'GILVAN LIMA';
+
     agenteInput.className = 'ocr-input';
+    // 💾 salva nome do agente automaticamente
+agenteInput.addEventListener('input', () => {
+  localStorage.setItem('OCR_AGENTE_NOME', agenteInput.value.trim());
+});
+
     // 📋 SELECT TIPO
     const tipoSelect = document.createElement('select');
     tipoSelect.className = 'ocr-select';
