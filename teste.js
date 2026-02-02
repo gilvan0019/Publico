@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      6.1.0
 // @description  OCR com layout flutuante, linhas numeradas e nomes em vermelho no BB
-// @match        https://app.tallos.com.br/app/chat*
+// @match        https://app.chatpro.com.br/chat*
 // @grant        GM_addStyle
 // @author       GILVAN
 // ==/UserScript==
@@ -1033,13 +1033,18 @@ topActions.appendChild(calcBtn)
     list.className = 'ocr-list';
 
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '❌ Fechar';
-    closeBtn.className = 'close';
+closeBtn.textContent = '❌ Fechar';
+closeBtn.className = 'btn-green';
 
-    const reportBtn = document.createElement('button');
-    reportBtn.textContent = ' Gerar relatório EXCEL';
-    reportBtn.className = 'close';
-    reportBtn.onclick = gerarRelatorioExcel;
+const reportBtn = document.createElement('button');
+reportBtn.textContent = ' Gerar relatório EXCEL';
+reportBtn.className = 'btn-green';
+
+reportBtn.onclick = gerarRelatorioExcel;
+
+closeBtn.addEventListener('click', () => {
+  overlay.style.display = 'none';
+});
 
     // 👤 CAMPO AGENTE
     const agenteInput = document.createElement('input');
