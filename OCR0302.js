@@ -42,7 +42,8 @@ let MODO_PARSE = false;
     function restaurarCardsDaTela() {
         registrosOCR.forEach(r => {
 
-            const body = criarDoc(r.arquivo || '');
+            const nomeCurto = limitarNomeArquivo(r.arquivo || '', 10);
+            const body = criarDoc(nomeCurto);
 
             body.dataset.salvo = '1';
             body.dataset.ocrId = r.id;
@@ -1017,6 +1018,44 @@ border: 1px solid #d2d0cd;
 .ocr-overlay.dark .doc.flash-remove { --flash-color: rgba(220,38,38,0.38); }
 .ocr-overlay.dark .doc.flash-add    { --flash-color: rgba(5,150,105,0.38); }
 
+/* 🧮 INPUT CALCULADORA — MESMO EFEITO DO DROP */
+#calcValorInline {
+  transition:
+    background .25s ease,
+    color .25s ease,
+    border-color .25s ease,
+    box-shadow .25s ease;
+}
+
+/* hover e focus */
+#calcValorInline:hover,
+#calcValorInline:focus {
+  background: linear-gradient(135deg,#1e3a8a,#2563eb);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 16px rgba(37,99,235,.35);
+  outline: none;
+}
+
+/* placeholder branco */
+#calcValorInline:hover::placeholder,
+#calcValorInline:focus::placeholder {
+  color: rgba(255,255,255,.85);
+}
+
+/* 🌙 DARK MODE — dourado igual resto */
+.ocr-overlay.dark #calcValorInline:hover,
+.ocr-overlay.dark #calcValorInline:focus {
+  background-color: #8a6500 !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 6px 16px rgba(138,101,0,.45);
+}
+
+.ocr-overlay.dark #calcValorInline:hover::placeholder,
+.ocr-overlay.dark #calcValorInline:focus::placeholder {
+  color: rgba(255,255,255,.9) !important;
+}
 
 `);
     const STORAGE_KEY = 'OCR_REGISTROS_V1';
@@ -1495,7 +1534,13 @@ border: 1px solid #d2d0cd;
         ) {
             return 'PASSAGEM';
         }
-
+        // 🟢 BANCO DO NORDESTE (BNB)
+        if (
+            t.includes('BANCO DO NORDESTE') ||
+            t.includes('BNB')
+        ) {
+            return 'BNB';
+        }
         return 'OUTRO';
     }
     function removerSegundos(hora) {
@@ -1972,6 +2017,70 @@ border: 1px solid #d2d0cd;
         renderFinal(body, { nome, hora: removerSegundos(hora), valor });
 
     }
+    function regraBancoNordeste(texto, body) {
+        const linhasHTML = body.querySelectorAll('.doc-line');
+
+        let valor = '';
+        let hora  = '';
+        let nome  = '';
+
+        function txtLinha(i) {
+            return linhasHTML[i]
+                ?.querySelector('span:last-child')
+                ?.textContent
+                ?.trim() || '';
+        }
+
+        /* ========= VALOR ========= */
+        for (let i = 0; i < linhasHTML.length; i++) {
+            const m = txtLinha(i).match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
+            if (m) {
+                valor = m[0];
+                break;
+            }
+        }
+
+        /* ========= HORÁRIO ========= */
+        for (let i = 0; i < linhasHTML.length; i++) {
+            const m = txtLinha(i).match(/\b\d{2}:\d{2}(:\d{2})?\b/);
+            if (m) {
+                hora = m[0];
+                break;
+            }
+        }
+
+        /* ========= PAGADOR ========= */
+        for (let i = 0; i < linhasHTML.length; i++) {
+            if (txtLinha(i).toUpperCase() === 'O PAGADOR') {
+
+                // procura "NOME" logo abaixo
+                for (let j = i + 1; j <= i + 5; j++) {
+                    if (txtLinha(j).toUpperCase().startsWith('NOME')) {
+
+                        const candidato = txtLinha(j)
+                        .replace(/^NOME\s*/i, '')
+                        .replace(/[^A-Za-zÀ-ÿ\s]/g, ' ')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+
+                        if (candidato.length >= 6) {
+                            nome = candidato;
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        /* ========= OUTPUT ========= */
+        renderFinal(body, {
+            nome: nome || '-',
+            hora: removerSegundos(hora) || '-',
+            valor: valor || '-'
+        });
+    }
+
     function regraSantander(texto, body) {
         const linhasHTML = body.querySelectorAll('.doc-line');
 
@@ -2103,71 +2212,71 @@ border: 1px solid #d2d0cd;
         return '';
     }
 
-  function regraItau(texto, body) {
-    const linhasHTML = body.querySelectorAll('.doc-line');
+    function regraItau(texto, body) {
+        const linhasHTML = body.querySelectorAll('.doc-line');
 
-    // 📍 índices baseados no novo layout Itaú
-    const INDEX_HORA    = 1;   // linha 2
-    const INDEX_VALOR   = 10;  // linha 11
-    const INDEX_NOME_1  = 14;  // linha 15
-    const INDEX_NOME_2  = 15;  // linha 16 (continuação)
+        // 📍 índices baseados no novo layout Itaú
+        const INDEX_HORA    = 1;   // linha 2
+        const INDEX_VALOR   = 10;  // linha 11
+        const INDEX_NOME_1  = 14;  // linha 15
+        const INDEX_NOME_2  = 15;  // linha 16 (continuação)
 
-    let valor = '';
-    let hora  = '';
-    let nome  = '';
+        let valor = '';
+        let hora  = '';
+        let nome  = '';
 
-    function txtLinha(i) {
-        return linhasHTML[i]
-            ?.querySelector('span:last-child')
-            ?.textContent
-            ?.trim() || '';
+        function txtLinha(i) {
+            return linhasHTML[i]
+                ?.querySelector('span:last-child')
+                ?.textContent
+                ?.trim() || '';
+        }
+
+        /* ========= HORÁRIO ========= */
+        if (linhasHTML[INDEX_HORA]) {
+            const t = txtLinha(INDEX_HORA);
+            const m = t.match(/\b\d{2}:\d{2}(:\d{2})?\b/);
+            if (m) hora = m[0];
+        }
+
+        /* ========= VALOR ========= */
+        if (linhasHTML[INDEX_VALOR]) {
+            const t = txtLinha(INDEX_VALOR);
+            const m = t.match(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}/);
+            if (m) valor = m[0];
+        }
+
+        /* ========= NOME DO PAGADOR ========= */
+        let partesNome = [];
+
+        const linhaNome1 = txtLinha(INDEX_NOME_1);
+        const linhaNome2 = txtLinha(INDEX_NOME_2);
+
+        if (linhaNome1) {
+            partesNome.push(linhaNome1);
+        }
+
+        // 🔁 se a próxima linha não for CPF/CNPJ, concatena
+        if (
+            linhaNome2 &&
+            !/CPF|CNPJ|AGÊNCIA|CONTA|BANCO/i.test(linhaNome2)
+        ) {
+            partesNome.push(linhaNome2);
+        }
+
+        if (partesNome.length) {
+            nome = limparCPFdoNome(
+                limparNome(partesNome.join(' '))
+            );
+        }
+
+        /* ========= OUTPUT FINAL ========= */
+        renderFinal(body, {
+            nome: nome || '-',
+            hora: removerSegundos(hora) || '-',
+            valor: valor || '-'
+        });
     }
-
-    /* ========= HORÁRIO ========= */
-    if (linhasHTML[INDEX_HORA]) {
-        const t = txtLinha(INDEX_HORA);
-        const m = t.match(/\b\d{2}:\d{2}(:\d{2})?\b/);
-        if (m) hora = m[0];
-    }
-
-    /* ========= VALOR ========= */
-    if (linhasHTML[INDEX_VALOR]) {
-        const t = txtLinha(INDEX_VALOR);
-        const m = t.match(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}/);
-        if (m) valor = m[0];
-    }
-
-    /* ========= NOME DO PAGADOR ========= */
-    let partesNome = [];
-
-    const linhaNome1 = txtLinha(INDEX_NOME_1);
-    const linhaNome2 = txtLinha(INDEX_NOME_2);
-
-    if (linhaNome1) {
-        partesNome.push(linhaNome1);
-    }
-
-    // 🔁 se a próxima linha não for CPF/CNPJ, concatena
-    if (
-        linhaNome2 &&
-        !/CPF|CNPJ|AGÊNCIA|CONTA|BANCO/i.test(linhaNome2)
-    ) {
-        partesNome.push(linhaNome2);
-    }
-
-    if (partesNome.length) {
-        nome = limparCPFdoNome(
-            limparNome(partesNome.join(' '))
-        );
-    }
-
-    /* ========= OUTPUT FINAL ========= */
-    renderFinal(body, {
-        nome: nome || '-',
-        hora: removerSegundos(hora) || '-',
-        valor: valor || '-'
-    });
-}
 
     function regraCaixa(texto, body) {
         const linhasHTML = body.querySelectorAll('.doc-line');
@@ -3000,6 +3109,33 @@ border: 1px solid #d2d0cd;
                 nome = ''; // 🔒 bloqueia recebedor proibido
             }
         }
+        /* ===== 🧠 FALLBACK — PRINT SÓ COM NOME ===== */
+        if (!nome) {
+            for (const l of linhas) {
+                const limpa = l
+                .replace(/[^A-Za-zÀ-ÿ\s]/g, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+
+                if (!limpa) continue;
+
+                const palavras = limpa.split(' ').filter(p => p.length >= 3);
+
+                // nome humano típico: 2 a 6 palavras
+                if (palavras.length >= 2 && palavras.length <= 6) {
+
+                    // evita pegar lixo
+                    const up = limpa.toUpperCase();
+                    if (
+                        BLOQUEADAS_GERAIS.some(b => up.includes(b)) ||
+                        /\bPIX\b|\bBANCO\b|\bVALOR\b/.test(up)
+                    ) continue;
+
+                    nome = limpa;
+                    break;
+                }
+            }
+        }
 
         /* ===== FINAL ===== */
         renderFinal(body, {
@@ -3060,7 +3196,10 @@ border: 1px solid #d2d0cd;
             regraCaixa(texto, body);
         }else if (banco === 'PASSAGEM') {
             regraPassagem(texto, body);
+        }else if (banco === 'BNB') {
+            regraBancoNordeste(texto, body);
         }
+
 
 
 
@@ -3280,6 +3419,11 @@ border: 1px solid #d2d0cd;
     <button class="remove">➖ Remover</button>
   </div>
 `;
+        // 🧾 tooltip com nome completo do arquivo
+        const header = d.querySelector('.doc-header');
+        if (header && d.dataset.nomeArquivo) {
+            header.title = d.dataset.nomeArquivo;
+        }
         const body=d.querySelector('.doc-body');
         d.querySelector('.doc-header').onclick=()=>{
             body.style.display=body.style.display==='none'?'block':'none';
@@ -3495,10 +3639,22 @@ border: 1px solid #d2d0cd;
             return await ocrImgTemp(file);
         }
     }
+    function limitarNomeArquivo(nome, max = 10) {
+        if (!nome) return '';
+        if (nome.length <= max) return nome;
+        return nome.slice(0, max) + '...';
+    }
 
     async function processFile(file, isPrint = false){
-        const body = criarDoc(file.name);
+        const nomeCurto = limitarNomeArquivo(file.name, 10);
+
+        const body = criarDoc(nomeCurto);
         body.dataset.nomeArquivo = file.name;
+
+        // aplica tooltip agora que o nome completo existe
+        const header = body.closest('.doc')?.querySelector('.doc-header');
+        if (header) header.title = file.name;
+
 
         if (isPrint) {
             body.dataset.print = '1'; // 🖨️ MARCA PRINT
