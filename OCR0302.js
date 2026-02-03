@@ -1,7 +1,8 @@
+
 // ==UserScript==
 // @name         OCR 0102
 // @namespace    http://tampermonkey.net/
-// @version      1.00
+// @version      1.01
 // @description  OCR
 // @match        https://app.chatpro.com.br/chat*
 // @grant        GM_addStyle
@@ -447,7 +448,7 @@ let MODO_PARSE = false;
 
 .ocr-header-form {
   display: flex;
-  flex-direction: column; 
+  flex-direction: column;
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -3066,7 +3067,7 @@ border: 1px solid #d2d0cd;
             texto = await ocrImgTemp(file);
         }
 
-        const dados = extrairDadosViaBanco(texto);
+        const dados = extrairDadosViaBanco(texto, true);
 
         // 🔍 COMPLETA SOMENTE O QUE ESTIVER VAZIO
         if (campoVazio(registro.nome) && dados.nome && dados.nome !== '-') {
@@ -3089,64 +3090,64 @@ border: 1px solid #d2d0cd;
         return true;
     }
 
-    function extrairDadosViaBanco(texto) {
+    function extrairDadosViaBanco(texto, forcarPrint = false) {
 
-        MODO_PARSE = true; // 🔒 não salva nada
-
-        const banco = identificarBanco(texto);
+        MODO_PARSE = true; // 🔒 não salva nada durante parse
 
         let nome = '';
         let hora = '';
         let valor = '';
 
+        const banco = identificarBanco(texto);
         const fakeBody = document.createElement('div');
 
         // replica EXATAMENTE o corpo numerado
         fakeBody.innerHTML = texto
             .split('\n')
-            .map((l, i) =>
-                 `<div class="doc-line">
-         <span class="ln">${i + 1}</span>
-         <span>${l}</span>
-       </div>`
-                ).join('');
+            .map((l, i) => `
+            <div class="doc-line">
+                <span class="ln">${i + 1}</span>
+                <span>${l}</span>
+            </div>
+        `).join('');
 
-        // 🔥 aplica a regra do banco, igual ao OCR normal
-        switch (banco) {
-            case 'BB': regraBancoBrasil(texto, fakeBody); break;
-            case 'BRADESCO': regraBradesco(texto, fakeBody); break;
-            case 'NUBANK': regraNubank(texto, fakeBody); break;
-            case 'INTER': regraBancoInter(texto, fakeBody); break;
-            case 'MERCADO_PAGO': regraMercadoPago(texto, fakeBody); break;
-            case 'C6': regraC6Bank(texto, fakeBody); break;
-            case 'ITAU': regraItau(texto, fakeBody); break;
-            case 'SANTANDER': regraSantander(texto, fakeBody); break;
-            case 'PICPAY': regraPicPay(texto, fakeBody); break;
-            case 'CAIXA': regraCaixa(texto, fakeBody); break;
-            case 'PASSAGEM': regraPassagem(texto, fakeBody); break;
-
-            default: { // ⚠️ BLOCO OBRIGATÓRIO
-                const linhas = fakeBody.querySelectorAll('.doc-line');
-                nome  = extrairNomeGlobal(linhas) || '';
-                hora  = extrairHoraUniversal(linhas) || '';
-                valor = extrairValorUniversal(linhas) || '';
-                break;
+        // 🔥 força modo PRINT se solicitado
+        if (forcarPrint) {
+            fakeBody.dataset.print = '1';
+            regraPrint(texto, fakeBody);
+        } else {
+            switch (banco) {
+                case 'BB': regraBancoBrasil(texto, fakeBody); break;
+                case 'BRADESCO': regraBradesco(texto, fakeBody); break;
+                case 'NUBANK': regraNubank(texto, fakeBody); break;
+                case 'INTER': regraBancoInter(texto, fakeBody); break;
+                case 'MERCADO_PAGO': regraMercadoPago(texto, fakeBody); break;
+                case 'C6': regraC6Bank(texto, fakeBody); break;
+                case 'ITAU': regraItau(texto, fakeBody); break;
+                case 'SANTANDER': regraSantander(texto, fakeBody); break;
+                case 'PICPAY': regraPicPay(texto, fakeBody); break;
+                case 'CAIXA': regraCaixa(texto, fakeBody); break;
+                case 'PASSAGEM': regraPassagem(texto, fakeBody); break;
+                default:
+                    regraPrint(texto, fakeBody);
             }
         }
 
+        // 🎯 coleta resultado final
         const final = fakeBody.querySelector('.doc-final');
         if (final) {
-            nome  = final.querySelector('.final-nome')?.textContent || nome;
-            hora  = final.querySelector('.final-hora')?.textContent || hora;
+            nome  = final.querySelector('.final-nome')?.textContent || '';
+            hora  = final.querySelector('.final-hora')?.textContent || '';
             valor = final.querySelector('.final-pix')
                 ?.textContent
-                ?.replace(/[^\d,]/g, '') || valor;
+                ?.replace(/[^\d,]/g, '') || '';
         }
 
         MODO_PARSE = false; // 🔓 libera
 
         return { banco, nome, hora, valor };
     }
+
 
     /* ========= OCR ========= */
     async function processFiles(files) {
@@ -3279,6 +3280,9 @@ border: 1px solid #d2d0cd;
             }, 1000);
         };
         d.querySelector('.add').onclick = () => {
+
+            // 🔒 limpa qualquer estado anterior
+            MODO_ADICIONAR = false;
             const id = body.dataset.ocrId;
             if (!id) return;
 
@@ -3308,7 +3312,7 @@ border: 1px solid #d2d0cd;
                         texto = await ocrImgTemp(file);
                     }
 
-                    const dados = extrairDadosViaBanco(texto);
+                    const dados = extrairDadosViaBanco(texto, true);
 
                     // 🔁 SUBSTITUI (NUNCA SOMA / NUNCA CRIA NOVO)
                     if (dados.nome && dados.nome !== '-') registro.nome = dados.nome;
@@ -3328,6 +3332,7 @@ border: 1px solid #d2d0cd;
             };
 
             inputAdd.click();
+
         };
 
 
@@ -3508,6 +3513,10 @@ border: 1px solid #d2d0cd;
         }
     }
     document.addEventListener('paste', async e => {
+
+        // 🔓 garante que colar SEMPRE funcione
+        MODO_ADICIONAR = false;
+
         for (const i of e.clipboardData?.items || []) {
             if (!i.type.startsWith('image/')) continue;
 
@@ -3516,7 +3525,7 @@ border: 1px solid #d2d0cd;
             // 🎯 tenta completar card selecionado
             const usado = await completarCardSelecionadoComPrint(file);
 
-            // 🆕 se não tinha card selecionado, cria novo (comportamento antigo)
+            // 🆕 se não tinha card selecionado, cria novo
             if (!usado) {
                 processFile(file, true);
             }
