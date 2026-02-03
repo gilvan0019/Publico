@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         OCR 0102
 // @namespace    http://tampermonkey.net/
-// @version      1.01
+// @version      1.0.2
 // @description  OCR
 // @match        https://app.chatpro.com.br/chat*
 // @grant        GM_addStyle
@@ -2103,47 +2103,72 @@ border: 1px solid #d2d0cd;
         return '';
     }
 
-    function regraItau(texto, body) {
-        const linhasHTML = body.querySelectorAll('.doc-line');
+  function regraItau(texto, body) {
+    const linhasHTML = body.querySelectorAll('.doc-line');
 
-        const INDEX_VALOR   = 3;  // linha 4
-        const INDEX_HORA    = 5;  // linha 6
-        const INDEX_PAGADOR = 9;  // linha 10
+    // 📍 índices baseados no novo layout Itaú
+    const INDEX_HORA    = 1;   // linha 2
+    const INDEX_VALOR   = 10;  // linha 11
+    const INDEX_NOME_1  = 14;  // linha 15
+    const INDEX_NOME_2  = 15;  // linha 16 (continuação)
 
-        let valor = '';
-        let hora  = '';
-        let nome  = '';
+    let valor = '';
+    let hora  = '';
+    let nome  = '';
 
-        function txtLinha(i) {
-            return linhasHTML[i]
-                ?.querySelector('span:last-child')
-                ?.textContent
-                ?.trim() || '';
-        }
-
-        /* ========= VALOR ========= */
-        if (linhasHTML[INDEX_VALOR]) {
-            const t = txtLinha(INDEX_VALOR);
-            const m = t.match(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}/);
-            if (m) valor = m[0];
-        }
-
-        /* ========= HORÁRIO ========= */
-        if (linhasHTML[INDEX_HORA]) {
-            const t = txtLinha(INDEX_HORA);
-            const m = t.match(/\b\d{2}:\d{2}(:\d{2})?\b/);
-            if (m) hora = m[0];
-        }
-
-        /* ========= PAGADOR ========= */
-        if (linhasHTML[INDEX_PAGADOR]) {
-            nome = limparNome(txtLinha(INDEX_PAGADOR));
-        }
-
-        /* ========= OUTPUT ========= */
-        renderFinal(body, { nome, hora: removerSegundos(hora), valor });
-
+    function txtLinha(i) {
+        return linhasHTML[i]
+            ?.querySelector('span:last-child')
+            ?.textContent
+            ?.trim() || '';
     }
+
+    /* ========= HORÁRIO ========= */
+    if (linhasHTML[INDEX_HORA]) {
+        const t = txtLinha(INDEX_HORA);
+        const m = t.match(/\b\d{2}:\d{2}(:\d{2})?\b/);
+        if (m) hora = m[0];
+    }
+
+    /* ========= VALOR ========= */
+    if (linhasHTML[INDEX_VALOR]) {
+        const t = txtLinha(INDEX_VALOR);
+        const m = t.match(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}/);
+        if (m) valor = m[0];
+    }
+
+    /* ========= NOME DO PAGADOR ========= */
+    let partesNome = [];
+
+    const linhaNome1 = txtLinha(INDEX_NOME_1);
+    const linhaNome2 = txtLinha(INDEX_NOME_2);
+
+    if (linhaNome1) {
+        partesNome.push(linhaNome1);
+    }
+
+    // 🔁 se a próxima linha não for CPF/CNPJ, concatena
+    if (
+        linhaNome2 &&
+        !/CPF|CNPJ|AGÊNCIA|CONTA|BANCO/i.test(linhaNome2)
+    ) {
+        partesNome.push(linhaNome2);
+    }
+
+    if (partesNome.length) {
+        nome = limparCPFdoNome(
+            limparNome(partesNome.join(' '))
+        );
+    }
+
+    /* ========= OUTPUT FINAL ========= */
+    renderFinal(body, {
+        nome: nome || '-',
+        hora: removerSegundos(hora) || '-',
+        valor: valor || '-'
+    });
+}
+
     function regraCaixa(texto, body) {
         const linhasHTML = body.querySelectorAll('.doc-line');
 
