@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         OCR 0102
 // @namespace    http://tampermonkey.net/
-// @version      6.1.0
-// @description  OCR com layout flutuante, linhas numeradas e nomes em vermelho no BB
+// @version      1.00
+// @description  OCR
 // @match        https://app.chatpro.com.br/chat*
 // @grant        GM_addStyle
 // @author       GILVAN
 // ==/UserScript==
 const registrosOCR = [];
+let MODO_ADICIONAR = false;
+let MODO_PARSE = false;
 
 (async function () {
     'use strict';
@@ -44,55 +46,56 @@ const registrosOCR = [];
             body.dataset.salvo = '1';
             body.dataset.ocrId = r.id;
 
-            atualizarVisualFinal(body); // ✅ ESSENCIAL
+            atualizarVisualFinal(body);
+            // ✅ ESSENCIAL
         });
 
         atualizarContador();
         atualizarTotalTela();
     }
     function calcularTotalTela() {
-    let total = 0;
+        let total = 0;
 
-    registrosOCR.forEach(r => {
+        registrosOCR.forEach(r => {
+            const pix = parseValor(r.valor);
+            const taxa = Number(r.taxa || 0);
+
+            if (pix.numero !== null) {
+                total += pix.numero - taxa;
+            }
+        });
+
+        return total;
+    }
+    function calcularTaxaServico(valor) {
+        if (valor <= 150) return 0.18;
+        if (valor <= 300) return 0.12;
+        if (valor <= 450) return 0.10;
+        return 0.06;
+    }
+
+    function atualizarVisualFinal(body) {
+        if (!body) return;
+
+        const id = body.dataset.ocrId;
+        if (!id) return;
+
+        const r = registrosOCR.find(x => x.id === id);
+        if (!r) return;
+
         const pix = parseValor(r.valor);
         const taxa = Number(r.taxa || 0);
 
+        let pixLiquidoTxt = r.valor || '-';
+
         if (pix.numero !== null) {
-            total += pix.numero - taxa;
+            const liquido = pix.numero - taxa;
+            pixLiquidoTxt = liquido
+                .toFixed(2)
+                .replace('.', ',');
         }
-    });
 
-    return total;
-}
-function calcularTaxaServico(valor) {
-  if (valor <= 150) return 0.18;
-  if (valor <= 300) return 0.12;
-  if (valor <= 450) return 0.10;
-  return 0.06;
-}
-
-  function atualizarVisualFinal(body) {
-    if (!body) return;
-
-    const id = body.dataset.ocrId;
-    if (!id) return;
-
-    const r = registrosOCR.find(x => x.id === id);
-    if (!r) return;
-
-    const pix = parseValor(r.valor);
-    const taxa = Number(r.taxa || 0);
-
-    let pixLiquidoTxt = r.valor || '-';
-
-    if (pix.numero !== null) {
-        const liquido = pix.numero - taxa;
-        pixLiquidoTxt = liquido
-            .toFixed(2)
-            .replace('.', ',');
-    }
-
-    body.innerHTML = `
+        body.innerHTML = `
       <div class="doc-line doc-final">
         <span class="final-nome">${r.nome || '-'}</span>
         <span class="final-hora">${r.hora || '-'}</span>
@@ -102,7 +105,7 @@ function calcularTaxaServico(valor) {
         </span>
       </div>
     `;
-}
+    }
 
 
 
@@ -122,13 +125,31 @@ function calcularTaxaServico(valor) {
   z-index: 999999;
   font-family: Arial;
 }
+/* ===== CARD SELECIONADO ===== */
+.doc.selecionado {
+  border: 2px solid  #4b5563;
+  box-shadow: inset 0 0 0 1px #4b5563;
+}
+
+/* 🌙 DARK MODE */
+.ocr-overlay.dark .doc.selecionado {
+  border: 2px solid  #9ca3af;
+  box-shadow: inset 0 0 0 1px #9ca3af;
+}
+.doc.selecionado:hover {
+  background-color: rgba(0,0,0,0.02);
+}
+
+.ocr-overlay.dark .doc.selecionado:hover {
+  background-color: rgba(255,255,255,0.04);
+}
 
 .ocr-box{
   width:600px;
   max-height:85vh;
   background:#fff;
   border-radius:16px;
-  padding:28px 16px 16px 16px; /* 🔼 mais espaço no topo */
+  padding:28px 16px 16px 16px;
   overflow:auto;
   box-shadow:0 15px 40px rgba(0,0,0,.35);
   cursor:move;
@@ -159,12 +180,11 @@ function calcularTaxaServico(valor) {
   margin-bottom: 4px;
 }
 
-/* 🔧 remove estilo nativo do select */
 .ocr-select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  padding-right: 40px;          /* espaço da seta */
+  padding-right: 40px;
   background-image:
     linear-gradient(45deg, transparent 50%, #555 50%),
     linear-gradient(135deg, #555 50%, transparent 50%);
@@ -306,7 +326,6 @@ function calcularTaxaServico(valor) {
   display: flex;
   gap: 8px;
 }
-/* ================= FULLSCREEN LIMPO E ESTÁVEL ================= */
 
 .ocr-overlay.fullscreen {
   top: 0 !important;
@@ -323,7 +342,6 @@ function calcularTaxaServico(valor) {
   cursor: default !important;
 }
 
-/* ===== CORREÇÃO: TUDO NA MESMA LINHA ===== */
 
 /* o card vira a linha */
 .ocr-overlay.fullscreen .doc {
@@ -338,7 +356,7 @@ function calcularTaxaServico(valor) {
   align-items: center;
   gap: 14px;
   padding: 0;
-  flex: 1;                 /* ocupa o espaço do meio */
+  flex: 1;
 }
 
 /* info interna */
@@ -379,7 +397,7 @@ function calcularTaxaServico(valor) {
 .copy.copiado::before {
   content: "";
 }
-/* REMOVE O TRIÂNGULO DO HEADER */
+
 .doc-header span {
   display: none !important;
 }
@@ -397,20 +415,20 @@ function calcularTaxaServico(valor) {
   flex-direction: column;
 }
 
-/* 📜 LISTA ROLÁVEL (CORRETO) */
+
 .ocr-list {
   flex: 1;
   overflow-y: auto;
   padding-right: 4px;
   margin-bottom: 8px;
 }
-/* BARRA DE AÇÕES NO FUNDO */
+
 .ocr-actions-bottom {
   margin-top: auto;
   padding-top: 10px;
   background: #fff;
 }
-/* 🔒 altura fixa dos campos */
+
 .ocr-input,
 .ocr-select {
   box-sizing: border-box;
@@ -427,15 +445,14 @@ function calcularTaxaServico(valor) {
   line-height: 1.4;
 }
 
-/* 👤 NOME + SELECT JUNTOS */
 .ocr-header-form {
   display: flex;
-  flex-direction: column;   /* um embaixo do outro */
+  flex-direction: column; 
   gap: 10px;
   margin-bottom: 14px;
 }
 
-/* 💻 EM TELA CHEIA, SE QUISER LADO A LADO */
+
 .ocr-overlay.fullscreen .ocr-header-form {
   flex-direction: row;
   gap: 14px;
@@ -445,7 +462,6 @@ function calcularTaxaServico(valor) {
 .ocr-overlay.fullscreen .ocr-header-form .ocr-select {
   flex: 1;
 }
-/* ================== 🌙 MODO ESCURO ================== */
 
 .ocr-overlay.dark .ocr-box {
   background: #1e1e1e;
@@ -453,18 +469,16 @@ function calcularTaxaServico(valor) {
   box-shadow: 0 20px 50px rgba(0,0,0,.6);
 }
 
-/* DROP */
 .ocr-overlay.dark .ocr-drop {
   background: #2a2a2a;
   border-color: #555;
   color: #90caf9;
 }
 
-/* INPUTS */
-/* 👤 INPUT DO NOME – CINZA CLARO NO DARK */
+
 .ocr-overlay.dark .ocr-input {
-  background: #2b2b2b !important;  /* cinza claro */
-  color: #fff !important;         /* letra preta */
+  background: #2b2b2b !important;
+  color: #fff !important;
   border: 1px solid #555 !important;
 }
 
@@ -473,19 +487,18 @@ function calcularTaxaServico(valor) {
   color: #444 !important;
 }
 
-/* SELECT SETA */
+
 .ocr-overlay.dark .ocr-select {
   background-image:
     linear-gradient(45deg, transparent 50%, #bbb 50%),
     linear-gradient(135deg, #bbb 50%, transparent 50%);
 }
 
-/* INFO (ARQUIVO / TOTAL) */
+
 .ocr-overlay.dark .ocr-info {
   color: #90caf9;
 }
 
-/* CARDS */
 .ocr-overlay.dark .doc {
   background: #252525;
   border-color: #444;
@@ -495,7 +508,6 @@ function calcularTaxaServico(valor) {
   color: #e0e0e0;
 }
 
-/* TEXTO FINAL */
 .ocr-overlay.dark .final-nome {
   color: #fff;
 }
@@ -506,7 +518,6 @@ function calcularTaxaServico(valor) {
   color: #81c784;
 }
 
-/* BOTÕES */
 .ocr-overlay.dark .copy {
   background: linear-gradient(135deg, #1a237e, #0d47a1);
 }
@@ -519,7 +530,7 @@ function calcularTaxaServico(valor) {
   background: linear-gradient(135deg, #111, #333);
 }
 
-/* LISTA SCROLL */
+
 .ocr-overlay.dark .ocr-list::-webkit-scrollbar {
   width: 8px;
 }
@@ -531,26 +542,23 @@ function calcularTaxaServico(valor) {
   background: #1e1e1e;
 }
 
-/* ===== SELECT NO MODO ESCURO ===== */
 .ocr-overlay.dark .ocr-select {
   background-color: #2b2b2b;
   color: #f1f1f1;
   border: 1px solid #555;
 }
 
-/* seta do select no dark */
 .ocr-overlay.dark .ocr-select {
   background-image:
     linear-gradient(45deg, transparent 50%, #ccc 50%),
     linear-gradient(135deg, #ccc 50%, transparent 50%);
 }
-/* ===== RODAPÉ NO MODO ESCURO ===== */
+
 .ocr-overlay.dark .ocr-actions-bottom {
   background: #1e1e1e;
   border-top: 1px solid #333;
 }
 
-/* ===== SELECT DARK MODE - DEFINITIVO ===== */
 .ocr-overlay.dark select,
 .ocr-overlay.dark select:focus,
 .ocr-overlay.dark select:active {
@@ -560,13 +568,11 @@ function calcularTaxaServico(valor) {
   outline: none !important;
 }
 
-/* texto da opção selecionada */
 .ocr-overlay.dark select option {
   background-color: #2b2b2b;
   color: #ffffff;
 }
 
-/* quando o dropdown abre */
 .ocr-overlay.dark select option:checked {
   background-color: #1e1e1e;
   color: #90caf9;
@@ -574,43 +580,37 @@ function calcularTaxaServico(valor) {
 .ocr-overlay.dark {
   color-scheme: dark;
 }
-/* 🌙 BOTÕES INVERTIDOS NO MODO ESCURO */
+
 .ocr-overlay.dark .ocr-actions-bottom button {
-  background: #e0e0e0 !important;   /* cinza claro */
-  color: #111 !important;           /* texto escuro */
+  background: #e0e0e0 !important;
+  color: #111 !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
-/* hover */
 .ocr-overlay.dark .ocr-actions-bottom button:hover {
   background: #ffffff !important;
   filter: none !important;
 }
 
-/* botão fechar com destaque */
 .ocr-overlay.dark .ocr-actions-bottom button:last-child {
   color: #c62828 !important;
 }
 
-/* ícone do fechar */
+
 .ocr-overlay.dark .ocr-actions-bottom button:last-child svg,
 .ocr-overlay.dark .ocr-actions-bottom button:last-child span {
   color: #c62828 !important;
 }
 
-
-/* texto das opções quando abre */
 .ocr-overlay.dark select option {
-  color: #fff !important;           /* texto preto */
-  background: #2b2b2b !important;   /* fundo claro */
-}
-
-/* opção selecionada */
-.ocr-overlay.dark select option:checked {
   color: #fff !important;
   background: #2b2b2b !important;
 }
 
+.ocr-overlay.dark select option:checked {
+  color: #fff !important;
+  background: #2b2b2b !important;
+}
 
 .taxa:hover{
   filter: brightness(0.9);
@@ -679,11 +679,11 @@ function calcularTaxaServico(valor) {
   color: #ff8f00;
   font-weight: bold;
 }
-/* ===== BOTÕES – ESTADO NEUTRO ===== */
+
 .doc-actions button{
-  background: #f1f3f5;          /* cinza claro (não branco) */
-  color: #374151;               /* texto cinza escuro */
-  border: 1px solid #d0d7de;    /* borda visível */
+  background: #f1f3f5;
+  color: #374151;
+  border: 1px solid #d0d7de;
   border-radius: 999px;
   font-weight: 600;
   transition:
@@ -693,14 +693,11 @@ function calcularTaxaServico(valor) {
     transform .15s ease;
 }
 
-/* leve destaque ao passar o mouse (antes da cor) */
 .doc-actions button:hover{
   box-shadow: 0 4px 10px rgba(0,0,0,.12);
   transform: translateY(-1px);
 }
-/* =====================================================
-   BOTÕES – ESTADO NEUTRO (CINZA CLARO AJUSTADO)
-===================================================== */
+
 .doc-actions button{
   flex: 1;
   padding: 10px;
@@ -718,101 +715,34 @@ border: 1px solid #d2d0cd;
     transform .15s ease;
 }
 
-/* leve elevação no hover (sem cor) */
 .doc-actions button:hover{
   box-shadow: 0 4px 10px rgba(0,0,0,.12);
   transform: translateY(-1px);
 }
 
-/* =====================================================
-   CORES ORIGINAIS NO HOVER
-===================================================== */
-
-/* 📋 COPIAR — AZUL */
-.doc-actions .copy:hover{
-  background: linear-gradient(135deg,#1e3a8a,#2563eb);
-  color: #fff;
-  border-color: transparent;
-}
-
-/* ✏️ EDITAR — ROXO */
-.doc-actions .editar:hover{
-  background: linear-gradient(135deg,#5b21b6,#7c3aed);
-  color: #fff;
-  border-color: transparent;
-}
-
-/* 💰 TAXA — AMARELO */
-.doc-actions .taxa:hover{
-  background: linear-gradient(135deg,#d97706,#f59e0b);
-  color: #fff;
-  border-color: transparent;
-}
-
-/* ➖ REMOVER — VERMELHO */
-.doc-actions .remove:hover{
-  background: linear-gradient(135deg,#991b1b,#dc2626);
-  color: #fff;
-  border-color: transparent;
-}
-/* ===============================
-   DARK MODE — ESTADO NEUTRO
-================================ */
 .ocr-overlay.dark .doc-actions button{
-  background: #1f1f1f;      /* cinza escuro (quase preto) */
+  background: #1f1f1f;
   color: #e5e7eb;
   border: 1px solid #3a3a3a;
   box-shadow: none;
 }
-/* ===============================
-   DARK MODE — HOVERS COLORIDOS
-================================ */
 
-/* 📋 COPIAR — AZUL */
-.ocr-overlay.dark .doc-actions .copy:hover{
-  background: linear-gradient(135deg,#1e3a8a,#2563eb) !important;
-  color:#fff !important;
-  border-color: transparent !important;
-}
-
-/* ✏️ EDITAR — ROXO */
-.ocr-overlay.dark .doc-actions .editar:hover{
-  background: linear-gradient(135deg,#5b21b6,#7c3aed) !important;
-  color:#fff !important;
-  border-color: transparent !important;
-}
-
-/* 💰 TAXA — AMARELO */
-.ocr-overlay.dark .doc-actions .taxa:hover{
-  background: linear-gradient(135deg,#d97706,#f59e0b) !important;
-  color:#fff !important;
-  border-color: transparent !important;
-}
-
-/* ➖ REMOVER — VERMELHO */
-.ocr-overlay.dark .doc-actions .remove:hover{
-  background: linear-gradient(135deg,#991b1b,#dc2626) !important;
-  color:#fff !important;
-  border-color: transparent !important;
-}
-/* 🔝 CONTAINER DOS BOTÕES SUPERIORES */
 .ocr-top-actions {
   position: absolute;
-  top: 12px;        /* 👈 DESCE OS DOIS JUNTOS */
+  top: 12px;
   right: 16px;
   display: flex;
   gap: 8px;
   z-index: 10;
 }
 
-/* 🔘 BOTÕES DO TOPO */
 .ocr-top-actions button {
   background: linear-gradient(135deg,#232526,#414345);
   color: #fff;
   border: none;
   width: 34px;
   height: 34px;
-  border-radius: 10px; /* quadrado arredondado */
+  border-radius: 10px;
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(0,0,0,.35);
   display: flex;
@@ -820,35 +750,30 @@ border: 1px solid #d2d0cd;
   justify-content: center;
 }
 
-/* hover bonito */
 .ocr-top-actions button:hover {
   filter: brightness(1.15);
 }
-/* 🌙 DARK MODE — INVERTER BOTÕES DO TOPO */
+
 .ocr-overlay.dark .ocr-top-actions button {
   background: #e0e0e0 !important;   /* fundo claro */
   color: #111 !important;           /* ícone escuro */
   box-shadow: 0 4px 10px rgba(0,0,0,0.6);
 }
 
-/* hover no dark */
 .ocr-overlay.dark .ocr-top-actions button:hover {
   background: #ffffff !important;
   filter: none !important;
 }
 
-
 .ocr-overlay.dark .final-pix,
 .ocr-overlay.dark .final-valor,
 .ocr-overlay.dark .ocr-info,
 .ocr-overlay.dark .ocr-info *{
-  color: #fbc02d !important; /* dourado */
+  color: #fbc02d !important;
 }
 .ocr-overlay.dark .final-taxa {
   color: #ef9a9a !important;
 }
-
-/* ================= ABA CALCULADORA (INLINE) ================= */
 
 .calc-panel {
   display: none;
@@ -882,7 +807,6 @@ border: 1px solid #d2d0cd;
   line-height: 1.6;
 }
 
-/* 🌙 DARK MODE */
 .ocr-overlay.dark .calc-panel {
   background: #2a2a2a;
 }
@@ -891,44 +815,207 @@ border: 1px solid #d2d0cd;
   background: #1e1e1e;
 }
 
-/* =========================
-   🌙 CALCULADORA — DARK MODE FIX
-========================= */
-
-/* painel */
 .ocr-overlay.dark .calc-panel {
   background: #1e1e1e;
   border: 1px solid #333;
 }
 
-/* título */
 .ocr-overlay.dark .calc-panel h3 {
   color: #fbc02d;
 }
 
-/* input */
 .ocr-overlay.dark .calc-panel input {
   background: #2b2b2b !important;
   color: #ffffff !important;
   border: 1px solid #555 !important;
 }
 
-/* placeholder */
 .ocr-overlay.dark .calc-panel input::placeholder {
   color: #9ca3af !important;
 }
 
-/* resultado */
 .ocr-overlay.dark .calc-panel .calc-result {
   background: #2a2a2a !important;
   color: #e5e7eb !important;
   border: 1px solid #333;
 }
 
-/* valores destacados */
 .ocr-overlay.dark .calc-panel b {
   color: #fbc02d;
 }
+
+
+/* 📋 COPIAR — AZUL */
+.doc-actions .copy:hover{
+  background: linear-gradient(135deg,#1e3a8a,#2563eb);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* ✏️ EDITAR — ROXO */
+.doc-actions .editar:hover{
+  background: linear-gradient(135deg,#5b21b6,#7c3aed);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* 💰 TAXA — AMARELO */
+.doc-actions .taxa:hover{
+  background: linear-gradient(135deg,#d97706,#f59e0b);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* ➖ REMOVER — VERMELHO */
+.doc-actions .remove:hover{
+  background: linear-gradient(135deg,#991b1b,#dc2626);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* ➕ ADICIONAR */
+.doc-actions .add:hover{
+  background: linear-gradient(135deg,#059669,#10b981);
+  color:#fff;
+  border-color: transparent;
+}
+
+/* 📋 COPIAR — AZUL */
+.ocr-overlay.dark .doc-actions .copy:hover{
+  background: linear-gradient(135deg,#1e3a8a,#2563eb) !important;
+  color:#fff !important;
+  border-color: transparent !important;
+}
+
+/* ✏️ EDITAR — ROXO */
+.ocr-overlay.dark .doc-actions .editar:hover{
+  background: linear-gradient(135deg,#5b21b6,#7c3aed) !important;
+  color:#fff !important;
+  border-color: transparent !important;
+}
+
+/* 💰 TAXA — AMARELO */
+.ocr-overlay.dark .doc-actions .taxa:hover{
+  background: linear-gradient(135deg,#d97706,#f59e0b) !important;
+  color:#fff !important;
+  border-color: transparent !important;
+}
+
+/* ➖ REMOVER — VERMELHO */
+.ocr-overlay.dark .doc-actions .remove:hover{
+  background: linear-gradient(135deg,#991b1b,#dc2626) !important;
+  color:#fff !important;
+  border-color: transparent !important;
+}
+
+/*  — ADICIONAR */
+.ocr-overlay.dark .doc-actions .add{
+  background: #1f1f1f;
+  color: #e5e7eb;
+  border: 1px solid #3a3a3a;
+}
+
+.ocr-overlay.dark .doc-actions .add:hover{
+  background: linear-gradient(135deg,#059669,#10b981) !important;
+  color:#fff !important;
+  border-color: transparent !important;
+}
+
+.ocr-overlay:not(.dark) .ocr-input:hover,
+.ocr-overlay:not(.dark) .ocr-input:focus {
+  background: linear-gradient(135deg,#1e3a8a,#2563eb);
+  color: #fff;
+  border-color: transparent;
+}
+
+.ocr-overlay:not(.dark) .ocr-select:hover,
+.ocr-overlay:not(.dark) .ocr-select:focus {
+  background: linear-gradient(135deg,#1e3a8a,#2563eb);
+  color: #fff; /* texto do select fechado */
+  border-color: transparent;
+}
+
+.ocr-overlay:not(.dark) select option {
+  background: #ffffff;
+  color: #111111;
+}
+
+.ocr-overlay:not(.dark) select option:checked {
+  background: #e5edff;
+  color: #1e3a8a;
+}
+
+.ocr-overlay.dark select option {
+  background: #2b2b2b !important;
+  color: #ffffff !important;
+}
+
+.ocr-overlay.dark select option:checked {
+  background: #1e1e1e !important;
+  color: #fbc02d !important;
+}
+
+.ocr-overlay.dark .ocr-input:hover,
+.ocr-overlay.dark .ocr-select:hover {
+  background-color: #8a6300 !important;
+  color: #fff !important;
+}
+
+.ocr-overlay.dark .ocr-input:focus,
+.ocr-overlay.dark .ocr-select:focus {
+  background-color: #8a6300 !important;
+  color: #fff !important;
+}
+
+.ocr-drop {
+  color: #1e3a8a; /* azul padrão */
+  transition: background-color .2s ease, color .2s ease;
+}
+
+.ocr-drop:hover {
+  background: linear-gradient(135deg,#1e3a8a,#2563eb);
+  color:#fff;
+  border-color: transparent;
+}
+
+.ocr-overlay.dark .ocr-drop {
+  background: #2a2a2a;
+  color: #90caf9; /* azul igual info / outros textos */
+  transition: background-color .2s ease, color .2s ease;
+}
+
+.ocr-overlay.dark .ocr-drop:hover {
+  background-color: #8a6500 !important;
+  color: #fff !important;
+}
+.doc {
+  padding: 6px 10px;
+}
+
+.doc-final {
+  gap: 16px;
+}
+
+@keyframes flash {
+  0%   { background-color: transparent; }
+  40%  { background-color: var(--flash-color); }
+  100% { background-color: transparent; }
+}
+
+.doc.flash {
+  animation: flash 0.6s ease;
+}
+.doc.flash-copy    { --flash-color: rgba(30,58,138,0.18); }  /* azul */
+.doc.flash-edit    { --flash-color: rgba(124,58,237,0.18); } /* roxo */
+.doc.flash-taxa    { --flash-color: rgba(217,119,6,0.22); }  /* amarelo */
+.doc.flash-remove  { --flash-color: rgba(220,38,38,0.22); }  /* vermelho */
+.doc.flash-add     { --flash-color: rgba(5,150,105,0.22); }  /* verde */
+.ocr-overlay.dark .doc.flash-copy   { --flash-color: rgba(30,58,138,0.35); }
+.ocr-overlay.dark .doc.flash-edit   { --flash-color: rgba(124,58,237,0.35); }
+.ocr-overlay.dark .doc.flash-taxa   { --flash-color: rgba(217,119,6,0.38); }
+.ocr-overlay.dark .doc.flash-remove { --flash-color: rgba(220,38,38,0.38); }
+.ocr-overlay.dark .doc.flash-add    { --flash-color: rgba(5,150,105,0.38); }
+
 
 `);
     const STORAGE_KEY = 'OCR_REGISTROS_V1';
@@ -962,25 +1049,25 @@ border: 1px solid #d2d0cd;
 
     const box = document.createElement('div');
     box.className = 'ocr-box';
-// Criar o container para os botões
-const topActions = document.createElement('div');
-topActions.className = 'ocr-top-actions';
-box.appendChild(topActions);
+    // Criar o container para os botões
+    const topActions = document.createElement('div');
+    topActions.className = 'ocr-top-actions';
+    box.appendChild(topActions);
 
     // 🧮 BOTÃO CALCULADORA
-const calcBtn = document.createElement('button');
-calcBtn.textContent = '🧮';
-calcBtn.title = 'Calculadora';
+    const calcBtn = document.createElement('button');
+    calcBtn.textContent = '🧮';
+    calcBtn.title = 'Calculadora';
 
-// adiciona primeiro
-topActions.appendChild(calcBtn)
-   calcBtn.onclick = () => {
-  const aberto = calcPanel.style.display === 'block';
-  calcPanel.style.display = aberto ? 'none' : 'block';
+    // adiciona primeiro
+    topActions.appendChild(calcBtn)
+    calcBtn.onclick = () => {
+        const aberto = calcPanel.style.display === 'block';
+        calcPanel.style.display = aberto ? 'none' : 'block';
 
-  inputCalc.value = '';
-  resultadoCalc.innerHTML = 'Informe um valor para calcular.';
-};
+        inputCalc.value = '';
+        resultadoCalc.innerHTML = 'Informe um valor para calcular.';
+    };
 
 
     const maxBtn = document.createElement('button');
@@ -1026,9 +1113,6 @@ topActions.appendChild(calcBtn)
     infoWrapper.className = 'ocr-info';
     infoWrapper.append(counter, totalTela);
 
-
-
-    // 🔴 FALTAVA ISSO
     const list = document.createElement('div');
     list.className = 'ocr-list';
 
@@ -1048,9 +1132,9 @@ topActions.appendChild(calcBtn)
 
     agenteInput.className = 'ocr-input';
     // 💾 salva nome do agente automaticamente
-agenteInput.addEventListener('input', () => {
-  localStorage.setItem('OCR_AGENTE_NOME', agenteInput.value.trim());
-});
+    agenteInput.addEventListener('input', () => {
+        localStorage.setItem('OCR_AGENTE_NOME', agenteInput.value.trim());
+    });
 
     // 📋 SELECT TIPO
     const tipoSelect = document.createElement('select');
@@ -1077,9 +1161,9 @@ agenteInput.addEventListener('input', () => {
         tipoSelect
     );
     const calcPanel = document.createElement('div');
-calcPanel.className = 'calc-panel';
+    calcPanel.className = 'calc-panel';
 
-calcPanel.innerHTML = `
+    calcPanel.innerHTML = `
   <h3>🧮 Calculadora de Taxa</h3>
 
   <input type="text" id="calcValorInline" placeholder="Digite o valor (ex: 250,00)">
@@ -1089,30 +1173,30 @@ calcPanel.innerHTML = `
   </div>
 `;
     const inputCalc = calcPanel.querySelector('#calcValorInline');
-const resultadoCalc = calcPanel.querySelector('#calcResultadoInline');
+    const resultadoCalc = calcPanel.querySelector('#calcResultadoInline');
 
-inputCalc.addEventListener('input', () => {
-  let v = inputCalc.value
-    .replace(/[^\d,]/g, '')
-    .replace(',', '.');
+    inputCalc.addEventListener('input', () => {
+        let v = inputCalc.value
+        .replace(/[^\d,]/g, '')
+        .replace(',', '.');
 
-  const valor = Number(v);
+        const valor = Number(v);
 
-  if (isNaN(valor) || valor <= 0) {
-    resultadoCalc.innerHTML = 'Informe um valor válido.';
-    return;
-  }
+        if (isNaN(valor) || valor <= 0) {
+            resultadoCalc.innerHTML = 'Informe um valor válido.';
+            return;
+        }
 
-  const taxaPerc = calcularTaxaServico(valor);
-  const taxaValor = valor * taxaPerc;
+        const taxaPerc = calcularTaxaServico(valor);
+        const taxaValor = valor * taxaPerc;
 
 
-  resultadoCalc.innerHTML = `
+        resultadoCalc.innerHTML = `
     💰 Valor bruto: <b>R$ ${valor.toFixed(2).replace('.', ',')}</b><br>
     ⚙️ Taxa: <b>${(taxaPerc * 100).toFixed(0)}%</b><br>
     ➖ Taxa serviço: <b>R$ ${taxaValor.toFixed(2).replace('.', ',')}</b><br>
   `;
-});
+    });
 
     const actionsBottom = document.createElement('div');
     actionsBottom.className = 'ocr-actions-bottom';
@@ -1120,13 +1204,13 @@ inputCalc.addEventListener('input', () => {
     actionsBottom.append(reportBtn, closeBtn);
 
     box.append(
-  drop,
-  headerForm,
-  calcPanel,      // 👈 AQUI
-  infoWrapper,
-  list,
-  actionsBottom
-);
+        drop,
+        headerForm,
+        calcPanel,      // 👈 AQUI
+        infoWrapper,
+        list,
+        actionsBottom
+    );
 
     reportBtn.className = 'btn-green';
     closeBtn.className  = 'btn-green';
@@ -1156,11 +1240,10 @@ inputCalc.addEventListener('input', () => {
     };
     document.onmouseup=()=>drag=false;
 
-    /* ========= FLOAT BTN ========= */
-   // ========= BOTÃO OCR MÓVEL =========
-const btn = document.createElement('button');
-btn.textContent = '📄 OCR';
-btn.style.cssText = `
+    // ========= BOTÃO OCR MÓVEL =========
+    const btn = document.createElement('button');
+    btn.textContent = '📄 OCR';
+    btn.style.cssText = `
   position: fixed;
   bottom: 20px;
   right: 20px;
@@ -1174,55 +1257,55 @@ btn.style.cssText = `
   cursor: grab;
 `;
 
-document.body.appendChild(btn);
+    document.body.appendChild(btn);
 
-// 🔁 RESTAURA POSIÇÃO
-const posSalva = JSON.parse(localStorage.getItem('OCR_BTN_POS') || '{}');
-if (posSalva.left) {
-  btn.style.left = posSalva.left;
-  btn.style.top  = posSalva.top;
-  btn.style.bottom = 'auto';
-  btn.style.right  = 'auto';
-}
+    // 🔁 RESTAURA POSIÇÃO
+    const posSalva = JSON.parse(localStorage.getItem('OCR_BTN_POS') || '{}');
+    if (posSalva.left) {
+        btn.style.left = posSalva.left;
+        btn.style.top  = posSalva.top;
+        btn.style.bottom = 'auto';
+        btn.style.right  = 'auto';
+    }
 
-// 🖱️ DRAG
-let dragging = false;
-let offsetX = 0;
-let offsetY = 0;
+    // 🖱️ DRAG
+    let dragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
 
-btn.addEventListener('mousedown', e => {
-  dragging = true;
-  btn.style.cursor = 'grabbing';
-  offsetX = e.clientX - btn.offsetLeft;
-  offsetY = e.clientY - btn.offsetTop;
-  e.preventDefault();
-});
+    btn.addEventListener('mousedown', e => {
+        dragging = true;
+        btn.style.cursor = 'grabbing';
+        offsetX = e.clientX - btn.offsetLeft;
+        offsetY = e.clientY - btn.offsetTop;
+        e.preventDefault();
+    });
 
-document.addEventListener('mousemove', e => {
-  if (!dragging) return;
-  btn.style.left = (e.clientX - offsetX) + 'px';
-  btn.style.top  = (e.clientY - offsetY) + 'px';
-  btn.style.bottom = 'auto';
-  btn.style.right  = 'auto';
-});
+    document.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        btn.style.left = (e.clientX - offsetX) + 'px';
+        btn.style.top  = (e.clientY - offsetY) + 'px';
+        btn.style.bottom = 'auto';
+        btn.style.right  = 'auto';
+    });
 
-document.addEventListener('mouseup', () => {
-  if (!dragging) return;
-  dragging = false;
-  btn.style.cursor = 'grab';
+    document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        btn.style.cursor = 'grab';
 
-  // 💾 salva posição
-  localStorage.setItem('OCR_BTN_POS', JSON.stringify({
-    left: btn.style.left,
-    top: btn.style.top
-  }));
-});
+        // 💾 salva posição
+        localStorage.setItem('OCR_BTN_POS', JSON.stringify({
+            left: btn.style.left,
+            top: btn.style.top
+        }));
+    });
 
-// 👆 CLIQUE ABRE OCR (sem arrastar)
-btn.addEventListener('click', e => {
-  if (dragging) return;
-  overlay.style.display = 'block';
-});
+    // 👆 CLIQUE ABRE OCR (sem arrastar)
+    btn.addEventListener('click', e => {
+        if (dragging) return;
+        overlay.style.display = 'block';
+    });
 
     closeBtn.onclick=()=>overlay.style.display='none';
 
@@ -1233,6 +1316,13 @@ btn.addEventListener('click', e => {
     input.multiple=true;
     input.hidden=true;
     document.body.appendChild(input);
+
+    const inputAdd = document.createElement('input');
+    inputAdd.type = 'file';
+    inputAdd.accept = '.png,.jpg,.jpeg,.pdf';
+    inputAdd.multiple = true;
+    inputAdd.hidden = true;
+    document.body.appendChild(inputAdd);
 
     drop.onclick=()=>input.click();
     drop.ondragover=e=>e.preventDefault();
@@ -1322,7 +1412,6 @@ btn.addEventListener('click', e => {
     function identificarBanco(texto){
         const t = texto.toUpperCase();
 
-        // 🟡 MERCADO PAGO — SEMPRE PRIMEIRO
         if (
             t.includes('MERCADO PAGO') &&
             t.includes('COMPROVANTE DE PIX')
@@ -1511,10 +1600,8 @@ btn.addEventListener('click', e => {
 
             const t = atual.toLowerCase();
 
-            // 🔑 contexto forte
             if (t === 'origem' || t === 'pagador' || t === 'quem pagou') {
 
-                // 🔍 janela de até 3 linhas
                 for (let j = 1; j <= 3; j++) {
                     const prox = linhasHTML[i + j]
                     ?.querySelector('span:last-child')
@@ -1540,42 +1627,60 @@ btn.addEventListener('click', e => {
         return '';
     }
 
-    // ===== RENDERIZAÇÃO FINAL (FORMATO ÚNICO LIMPO) =====
-   function renderFinal(body, { nome, hora, valor }) {
+    function renderFinal(body, { nome, hora, valor }) {
 
-    let valorLimpo = (valor || '')
+        if (nome) {
+            const nomeNorm = normalizarNome(nome);
+
+            if (NOMES_PROIBIDOS.some(n => nomeNorm.includes(n))) {
+                nome = '-'; // 🔒 some da tela e do total
+            }
+        }
+
+        if (MODO_PARSE) {
+            body.innerHTML = `
+      <div class="doc-line doc-final">
+        <span class="final-nome">${nome || '-'}</span>
+        <span class="final-hora">${hora || '-'}</span>
+        <span class="final-pix">${valor || '-'}</span>
+      </div>
+    `;
+            return;
+        }
+        let valorLimpo = (valor || '')
         .replace(/R\$\s*/gi, '')
         .trim();
 
-    if (!body.dataset.salvo) {
-        const novoId = gerarId();
-        body.dataset.ocrId = novoId;
+        if (!body.dataset.salvo) {
+            const novoId = gerarId();
+            body.dataset.ocrId = novoId;
 
-        registrosOCR.push({
-            id: novoId,
-            arquivo: body.dataset.nomeArquivo || '',
-            nome: nome || '',
-            hora: hora || '',
-            valor: valorLimpo || '',
-            taxa: 0
-        });
+            registrosOCR.push({
+                id: novoId,
+                arquivo: body.dataset.nomeArquivo || '',
+                nome: nome || '',
+                hora: hora || '',
+                valor: valorLimpo || '',
+                taxa: 0
+            });
 
-        body.dataset.salvo = '1';
-        salvarStorage();
-        atualizarContador();
-    } else {
-        const r = registrosOCR.find(x => x.id === body.dataset.ocrId);
-        if (r) {
-            r.nome = nome || r.nome;
-            r.hora = hora || r.hora;
-            r.valor = valorLimpo || r.valor;
+            body.dataset.salvo = '1';
             salvarStorage();
+            atualizarContador();
+        } else {
+            const r = registrosOCR.find(x => x.id === body.dataset.ocrId);
+            if (r) {
+                r.nome = nome || r.nome;
+                r.hora = hora || r.hora;
+                r.valor = valorLimpo || r.valor;
+                salvarStorage();
+            }
         }
-    }
 
-    atualizarVisualFinal(body);
-    atualizarTotalTela();
-}
+        atualizarVisualFinal(body);
+
+        atualizarTotalTela();
+    }
 
 
     function horaParaMinutos(hora) {
@@ -1600,57 +1705,77 @@ btn.addEventListener('click', e => {
             .replace(/^N0ME\s*/i, 'NOME ')
             .trim();
     }
-    /* ========= REGRA BB (CORRIGIDA) ========= */
+
     function regraBancoBrasil(texto, body) {
         const linhasHTML = body.querySelectorAll('.doc-line');
-
-        const INDEX_LINHA_6  = 5;   // valor
-        const INDEX_LINHA_7  = 6;   // horário
-        const INDEX_LINHA_23 = 22;  // nome
 
         let valor = '';
         let hora  = '';
         let nome  = '';
 
-        // 💚 VALOR
-        if (linhasHTML[INDEX_LINHA_6]) {
-            const t = linhasHTML[INDEX_LINHA_6]
-            .querySelector('span:last-child').textContent;
+        function txtLinha(i) {
+            return linhasHTML[i]
+                ?.querySelector('span:last-child')
+                ?.textContent
+                ?.trim() || '';
+        }
+
+
+        for (let i = 0; i < linhasHTML.length; i++) {
+            const t = txtLinha(i);
             const m = t.match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
-            if (m) valor = m[0];
+            if (m) {
+                valor = m[0];
+                break;
+            }
         }
 
-        // 🔵 HORÁRIO
-        if (linhasHTML[INDEX_LINHA_7]) {
-            const t = linhasHTML[INDEX_LINHA_7]
-            .querySelector('span:last-child').textContent;
+        for (let i = 0; i < linhasHTML.length; i++) {
+            const t = txtLinha(i);
             const m = t.match(/\b\d{2}:\d{2}(:\d{2})?\b/);
-            if (m) hora = m[0];
+            if (m) {
+                hora = m[0];
+                break;
+            }
         }
 
-        // 🔴 NOME — BB (corrige nome colado + símbolos)
-        if (linhasHTML[INDEX_LINHA_23]) {
-            nome = linhasHTML[INDEX_LINHA_23]
-                .querySelector('span:last-child')
-                .textContent
+        for (let i = 0; i < linhasHTML.length; i++) {
+            const t = txtLinha(i).toUpperCase();
 
-            // 🧠 insere espaço antes de maiúscula colada (SouzaRocha → Souza Rocha)
-                .replace(/([a-zÀ-ÿ])([A-ZÀ-Ý])/g, '$1 $2')
+            if (
+                t === 'PAGADOR' ||
+                t === 'ORIGEM' ||
+                t === 'QUEM PAGOU'
+            ) {
+                for (let j = 1; j <= 3; j++) {
+                    let candidato = txtLinha(i + j);
+                    if (!candidato) continue;
 
-            // remove símbolos finais tipo *
-                .replace(/[*•:]+$/g, '')
+                    candidato = candidato
+                        .replace(/[*•:]+$/g, '')
+                        .replace(/[^A-Za-zÀ-ÿ\s]/g, ' ')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
 
-            // remove qualquer lixo
-                .replace(/[^A-Za-zÀ-ÿ\s]/g, ' ')
-
-            // normaliza espaços
-                .replace(/\s{2,}/g, ' ')
-                .trim();
+                    if (
+                        candidato.length >= 6 &&
+                        !/CPF|CNPJ|AGÊNCIA|CONTA|BANCO/i.test(candidato)
+                    ) {
+                        nome = candidato;
+                        break;
+                    }
+                }
+                if (nome) break;
+            }
         }
-        // 🧹 LIMPA TUDO E MOSTRA SÓ O ESSENCIAL
-        renderFinal(body, { nome, hora: removerSegundos(hora), valor });
 
+        renderFinal(body, {
+            nome: nome || '-',
+            hora: removerSegundos(hora) || '-',
+            valor: valor || '-'
+        });
     }
+
     function regraNubank(texto, body) {
         const linhasHTML = body.querySelectorAll('.doc-line');
 
@@ -1741,9 +1866,7 @@ btn.addEventListener('click', e => {
                 }
             }
         }
-        /* =====================================================
-     FALLBACK — REGRA ANTIGA (SEGURANÇA)
-  ====================================================== */
+
         if (!valor || !hora || !nome) {
             linhasHTML.forEach((linha, i) => {
                 const txt = txtLinha(i).toUpperCase();
@@ -1763,9 +1886,7 @@ btn.addEventListener('click', e => {
                 }
             });
         }
-        /* =========================
-     OUTPUT FINAL
-  ========================== */
+
         renderFinal(body, { nome, hora: removerSegundos(hora), valor });
 
     }
@@ -1847,9 +1968,6 @@ btn.addEventListener('click', e => {
         if (!hora) hora = '-';
         if (!nome) nome = '-';
 
-        /* =========================
-       OUTPUT FINAL
-    ========================== */
         renderFinal(body, { nome, hora: removerSegundos(hora), valor });
 
     }
@@ -1894,73 +2012,62 @@ btn.addEventListener('click', e => {
         renderFinal(body, { nome, hora: removerSegundos(hora), valor });
 
     }
-   function regraBradesco(texto, body) {
-    const linhasHTML = body.querySelectorAll('.doc-line');
+    function regraBradesco(texto, body) {
+        const linhasHTML = body.querySelectorAll('.doc-line');
 
-    let valor = '';
-    let hora  = '';
-    let nome  = '';
+        let valor = '';
+        let hora  = '';
+        let nome  = '';
 
-    function txtLinha(i) {
-        return linhasHTML[i]
-            ?.querySelector('span:last-child')
-            ?.textContent
-            ?.trim() || '';
+        function txtLinha(i) {
+            return linhasHTML[i]
+                ?.querySelector('span:last-child')
+                ?.textContent
+                ?.trim() || '';
+        }
+
+
+        // ⏰ HORÁRIO — linha 7 (index 6)
+        if (!hora && txtLinha(6)) {
+            const m = txtLinha(6).match(/\b\d{2}:\d{2}(:\d{2})?\b/);
+            if (m) hora = m[0];
+        }
+
+        // 💰 VALOR — linha 8 (index 7)
+        if (!valor && txtLinha(7)) {
+            const m = txtLinha(7).match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
+            if (m) valor = m[0];
+        }
+
+        // 👤 PAGADOR — linha 20 (index 19)
+        if (!nome && txtLinha(19)) {
+            nome = limparNome(txtLinha(19));
+        }
+
+
+        // ⏰ HORÁRIO — linha 7 (index 6)
+        if (!hora && txtLinha(6)) {
+            const m = txtLinha(6).match(/\b\d{2}:\d{2}(:\d{2})?\b/);
+            if (m) hora = m[0];
+        }
+
+        // 💰 VALOR — linha 9 (index 8)
+        if (!valor && txtLinha(8)) {
+            const m = txtLinha(8).match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
+            if (m) valor = m[0];
+        }
+
+        // 👤 PAGADOR — linha 31 (index 30)
+        if (!nome && txtLinha(30)) {
+            nome = limparNome(txtLinha(30));
+        }
+
+        renderFinal(body, {
+            nome,
+            hora: removerSegundos(hora),
+            valor
+        });
     }
-
-    /* =====================================================
-       🔹 LAYOUT NOVO (PRIORIDADE)
-       horário 7 | valor 8 | pagador 20
-    ====================================================== */
-
-    // ⏰ HORÁRIO — linha 7 (index 6)
-    if (!hora && txtLinha(6)) {
-        const m = txtLinha(6).match(/\b\d{2}:\d{2}(:\d{2})?\b/);
-        if (m) hora = m[0];
-    }
-
-    // 💰 VALOR — linha 8 (index 7)
-    if (!valor && txtLinha(7)) {
-        const m = txtLinha(7).match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
-        if (m) valor = m[0];
-    }
-
-    // 👤 PAGADOR — linha 20 (index 19)
-    if (!nome && txtLinha(19)) {
-        nome = limparNome(txtLinha(19));
-    }
-
-    /* =====================================================
-       🔹 LAYOUT ANTIGO (FALLBACK)
-       horário 7 | valor 9 | pagador 31
-    ====================================================== */
-
-    // ⏰ HORÁRIO — linha 7 (index 6)
-    if (!hora && txtLinha(6)) {
-        const m = txtLinha(6).match(/\b\d{2}:\d{2}(:\d{2})?\b/);
-        if (m) hora = m[0];
-    }
-
-    // 💰 VALOR — linha 9 (index 8)
-    if (!valor && txtLinha(8)) {
-        const m = txtLinha(8).match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
-        if (m) valor = m[0];
-    }
-
-    // 👤 PAGADOR — linha 31 (index 30)
-    if (!nome && txtLinha(30)) {
-        nome = limparNome(txtLinha(30));
-    }
-
-    /* =========================
-       OUTPUT FINAL
-    ========================== */
-    renderFinal(body, {
-        nome,
-        hora: removerSegundos(hora),
-        valor
-    });
-}
 
     function extrairHoraMercadoPago(linhasHTML) {
         for (let i = 0; i < linhasHTML.length; i++) {
@@ -2050,7 +2157,6 @@ btn.addEventListener('click', e => {
         let hora  = '';
         let nome  = '-';
 
-        /* ========= VALOR + HORA — após "valor data" ========= */
         for (let i = 0; i < linhasHTML.length; i++) {
             const t = txtLinha(i).toLowerCase();
 
@@ -2069,8 +2175,7 @@ btn.addEventListener('click', e => {
                 break;
             }
         }
-        /* ========= PAGADOR — "Dados do pagador" ========= */
-        /* ========= PAGADOR — CAIXA (ROBUSTO) ========= */
+
         for (let i = 0; i < linhasHTML.length; i++) {
 
             if (txtLinha(i).toLowerCase() === 'dados do pagador') {
@@ -2128,7 +2233,6 @@ btn.addEventListener('click', e => {
         let hora  = '';
         let nome  = '';
 
-        /* ========= HORÁRIO — após "Comprovante de Pix" ========= */
         for (let i = 0; i < linhasHTML.length; i++) {
             if (txtLinha(i).toLowerCase().includes('comprovante de pix')) {
                 for (let j = 1; j <= 4; j++) {
@@ -2143,7 +2247,6 @@ btn.addEventListener('click', e => {
             }
         }
 
-        /* ========= VALOR — após "Valor" ========= */
         for (let i = 0; i < linhasHTML.length; i++) {
             if (txtLinha(i).toLowerCase() === 'valor') {
                 for (let j = 1; j <= 2; j++) {
@@ -2158,7 +2261,6 @@ btn.addEventListener('click', e => {
             }
         }
 
-        /* ========= PAGADOR — após "De" (ROBUSTO) ========= */
         for (let i = 0; i < linhasHTML.length; i++) {
             if (txtLinha(i).toLowerCase() === 'de') {
 
@@ -2170,7 +2272,6 @@ btn.addEventListener('click', e => {
 
                     const up = linha.toUpperCase();
 
-                    // ⛔ condição de parada — CPF/CNPJ (normal ou mascarado)
                     if (
                         up.includes('CPF') ||
                         up.includes('CNPJ') ||
@@ -2181,7 +2282,6 @@ btn.addEventListener('click', e => {
                     ) {
                         break;
                     }
-                    // ignora lixo
                     if (linha.length < 3) continue;
                     if (
                         up.includes('BANCO') ||
@@ -2196,7 +2296,7 @@ btn.addEventListener('click', e => {
                     nome = limparCPFdoNome(
                         limparNome(partesNome.join(' '))
                     );
-                    // 🧹 remove CPF/CNPJ mascarado ou colado no final
+
                     nome = nome
                         .replace(/\*{2,3}\.\d{3}\.\d{3}-\*{2}.*/g, '')
                         .replace(/\+\*{2}\.\d{3}\.\d{3}-\*{2}.*/g, '')
@@ -2207,7 +2307,6 @@ btn.addEventListener('click', e => {
                 break;
             }
         }
-        /* ========= OUTPUT ========= */
         renderFinal(body, { nome, hora: removerSegundos(hora), valor });
 
     }
@@ -2388,8 +2487,6 @@ btn.addEventListener('click', e => {
             valor = 'valor não encontrado';
         }
 
-
-        /* ========= PAGADOR — REGRA FINAL (ROBUSTA) ========= */
         let nome = '';
 
         for (let i = 0; i < linhasHTML.length; i++) {
@@ -2464,7 +2561,6 @@ btn.addEventListener('click', e => {
                     }
                 }
 
-                // 3️⃣ continuação do nome (até +2 linhas)
                 const BLOQUEADAS = [
                     'OBRIGATORIO','OBRIGATÓRIO',
                     'COMPARECIMENTO',
@@ -2651,23 +2747,23 @@ btn.addEventListener('click', e => {
 
             const linhaExcel = dados.length + 1;
             const pixOriginal = parseValor(item.valor);
-const taxa = Number(item.taxa || 0);
+            const taxa = Number(item.taxa || 0);
 
-// 🔥 PIX LÍQUIDO (igual à tela)
-let pixLiquido = pixOriginal.numero;
-if (pixLiquido !== null && taxa > 0) {
-    pixLiquido = pixLiquido - taxa;
-}
+            // 🔥 PIX LÍQUIDO (igual à tela)
+            let pixLiquido = pixOriginal.numero;
+            if (pixLiquido !== null && taxa > 0) {
+                pixLiquido = pixLiquido - taxa;
+            }
 
-dados.push([
-  item.nome ? item.nome.toUpperCase() : '',
-  item.hora || '',
-  pixLiquido !== null ? pixLiquido : pixOriginal.texto, // ✅ PIX LÍQUIDO
-  taxa || 0,
-  pixLiquido !== null
-    ? { f: `IF(ISNUMBER(C${linhaExcel}),C${linhaExcel}+D${linhaExcel},"")` }
-    : ''
-]);
+            dados.push([
+                item.nome ? item.nome.toUpperCase() : '',
+                item.hora || '',
+                pixLiquido !== null ? pixLiquido : pixOriginal.texto, // ✅ PIX LÍQUIDO
+                taxa || 0,
+                pixLiquido !== null
+                ? { f: `IF(ISNUMBER(C${linhaExcel}),C${linhaExcel}+D${linhaExcel},"")` }
+                : ''
+            ]);
         });
 
 
@@ -2719,103 +2815,185 @@ dados.push([
 
         XLSX.writeFile(wb, 'relatorio_ocr.xlsx');
     }
-function regraPrint(texto, body) {
-    const linhas = texto.split('\n');
 
-    let valor = '';
-    let hora  = '';
-    let nome  = '';
-
-    // ❌ palavras que NUNCA podem fazer parte de nome
-    const BLOQUEADAS = [
-  // genéricos / rótulos
-  'DADOS','RECEBEDOR','RECEBIDO','TIPO','CONTA','INFORMAÇÕES','INFORMACOES',
-  'PROCESSANDO','FINALIZADO','DETALHES','DESCRIÇÃO','DESCRICAO',
-
-  // banco / financeiro
-  'BANCO','PIX','TRANSFERENCIA','TRANSFERÊNCIA',
-  'CPF','CNPJ','VALOR','DATA','HORA',
-
-  // empresas
-  'VIAGEM','VIAGENS','TURISMO','AGENCIA','AGÊNCIA',
-  'LTDA','ME','EIRELI','SA','S.A','COMPANHIA',
-  'PAGADOR','EMPRESA'
-];
-
-
-    function nomePessoaFisica(txt) {
-        if (!txt) return false;
-
-        const t = txt.trim();
-        const up = t.toUpperCase();
-
-        // ❌ não pode ter número
-        if (/\d/.test(t)) return false;
-
-        // ❌ CPF explícito ou mascarado
-        if (/CPF|CNPJ/i.test(up)) return false;
-
-        // ❌ só letras
-        if (!/^[A-ZÀ-Ÿ\s]+$/.test(up)) return false;
-
-        const partes = up.split(/\s+/).filter(p => p.length >= 3);
-
-        // ❌ precisa de pelo menos nome + sobrenome
-        if (partes.length < 2) return false;
-
-        // ❌ bloqueadas
-        if (partes.some(p => BLOQUEADAS.includes(p))) return false;
-
-        return true;
+    function normalizarNome(txt) {
+        return txt
+            .toUpperCase()
+            .normalize('NFD')                 // remove acentos
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^A-Z\s]/g, ' ')        // só letras
+            .replace(/\s+/g, ' ')             // espaços duplicados
+            .trim();
+    }
+    function campoVazio(v) {
+        return !v || v === '-' || v.trim() === '';
     }
 
-    for (const l of linhas) {
-        const t = l.trim();
-        if (!t) continue;
+    const NOMES_PROIBIDOS = [
+        'ANTONIO CLERVES OLIVEIRA DE ARAUJO','ANTONIO CLERVES DE ARAUJO','ANTONIO CLERVES OLIVEIRA','VALE VIAGENS','ANTONIO CLERVES OLVEIRADE ARAUJO'
 
-        // 💰 VALOR
-        if (!valor) {
-            const m = t.match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
+    ].map(n => normalizarNome(n));
+
+    function regraPrint(texto, body) {
+        const linhas = texto
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean);
+
+        let valor = '';
+        let hora  = '';
+        let nome  = '';
+        let achouPagador = false;
+
+        const BLOQUEADAS_GERAIS = [
+            'DADOS','RECEBEDOR','RECEBIDO','TIPO','CONTA',
+            'INFORMAÇÕES','INFORMACOES','PROCESSANDO','FINALIZADO',
+            'DETALHES','DESCRIÇÃO','DESCRICAO',
+            'BANCO','PIX','TRANSFERENCIA','TRANSFERÊNCIA',
+            'CPF','CNPJ','VALOR','DATA','HORA',
+            'VIAGEM','VIAGENS','TURISMO','AGENCIA','AGÊNCIA',
+            'LTDA','ME','EIRELI','SA','S.A','COMPANHIA',
+            'EMPRESA',
+            'TARIFA','TARIFA ZERADA','TARIFA ZERO',
+            'ISENTO','ISENTA','GRATUITO','GRATUITA',
+            'COMPROVANTE','NÃO INFORMADO','NAO INFORMADO',
+            'PAGAMENTO','PIX REALIZADO','COM SUCESSO'
+        ];
+
+        /* ===== 💰 VALOR ===== */
+        for (const l of linhas) {
+            const m = l.match(/R\$\s*\d{1,3}(\.\d{3})*,\d{2}/);
             if (m) {
                 valor = m[0];
-                continue;
+                break;
             }
         }
 
-        // ⏰ HORÁRIO
-        if (!hora) {
-            const m = t.match(/\b\d{2}:\d{2}(:\d{2})?\b/);
+        /* ===== ⏰ HORÁRIO ===== */
+        for (const l of linhas) {
+            const m = l.match(/\b\d{2}:\d{2}(:\d{2})?\b/);
             if (m) {
                 hora = m[0];
-                continue;
+                break;
             }
         }
 
-        // 👤 SOMENTE PESSOA FÍSICA REAL
-        if (!nome && nomePessoaFisica(t)) {
-            nome = t;
+        /* ===== 👤 PAGADOR ===== */
+        for (let i = 0; i < linhas.length; i++) {
+            if (linhas[i].toUpperCase() === 'PAGADOR') {
+                achouPagador = true;
+
+                for (let j = 1; j <= 4; j++) {
+                    let candidato = linhas[i + j];
+                    if (!candidato) continue;
+
+                    const up = candidato.toUpperCase();
+                    if (BLOQUEADAS_GERAIS.some(b => up.includes(b))) break;
+
+                    candidato = candidato
+                        .replace(/[^A-Za-zÀ-ÿ\s]/g, ' ')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+
+                    const partes = candidato.split(' ').filter(p => p.length >= 3);
+                    if (partes.length >= 2) {
+                        nome = candidato;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+        /* ===== 👤 NOME APÓS PAGADOR → NOME (ROBUSTO) ===== */
+        if (!nome) {
+            for (let i = 0; i < linhas.length; i++) {
+
+                if (linhas[i].toUpperCase() === 'PAGADOR') {
+
+                    // procura "NOME" logo abaixo
+                    for (let j = i + 1; j <= i + 5; j++) {
+
+                        if (linhas[j]?.toUpperCase() === 'NOME') {
+
+                            let partes = [];
+
+                            // coleta até 3 linhas após "NOME"
+                            for (let k = j + 1; k <= j + 4; k++) {
+                                const linha = linhas[k];
+                                if (!linha) continue;
+
+                                const up = linha.toUpperCase();
+
+                                // ⛔ para ao encontrar CPF / CNPJ
+                                if (up.includes('CPF') || up.includes('CNPJ')) break;
+
+                                const limpa = linha
+                                .replace(/[^A-Za-zÀ-ÿ\s]/g, ' ')
+                                .replace(/\s{2,}/g, ' ')
+                                .trim();
+
+                                if (limpa.length >= 3) {
+                                    partes.push(limpa);
+                                }
+                            }
+
+                            if (partes.length) {
+                                nome = partes.join(' ');
+                            }
+
+                            break;
+                        }
+                    }
+                }
+
+                if (nome) break;
+            }
         }
 
-        if (valor && hora && nome) break;
+
+        /* ===== 🛟 FALLBACK (SEM CONTEXTO) ===== */
+        if (!nome && !achouPagador) {
+            for (const l of linhas) {
+                const up = l.toUpperCase();
+
+                if (!/^[A-ZÀ-Ÿ\s]+$/.test(up)) continue;
+                if (BLOQUEADAS_GERAIS.some(b => up.includes(b))) continue;
+
+                const partes = up.split(/\s+/).filter(p => p.length >= 3);
+                if (partes.length >= 3) {
+                    nome = l;
+                    break;
+                }
+            }
+        }
+        /* ===== ⛔ BLOQUEIO FINAL DE NOMES PROIBIDOS ===== */
+        if (nome) {
+            const nomeNormalizado = normalizarNome(nome);
+
+            if (NOMES_PROIBIDOS.some(n => nomeNormalizado.includes(n))) {
+                nome = ''; // 🔒 bloqueia recebedor proibido
+            }
+        }
+
+        /* ===== FINAL ===== */
+        renderFinal(body, {
+            nome: nome || '-',
+            hora: removerSegundos(hora) || '-',
+            valor: valor || '-'
+        });
     }
 
-    renderFinal(body, {
-        nome: nome || '-',                 // 👈 se não achou, NÃO INVENTA
-        hora: removerSegundos(hora) || '-',
-        valor: valor || '-'
-    });
-}
 
 
     /* ========= NUMERA + APLICA ========= */
     function aplicarRegras(body){
-    const texto = body.textContent;
+        const texto = body.textContent;
 
-    // 🖨️ PRINT (CTRL+V) — BLOQUEIO TOTAL
-    if (body.dataset.print === '1') {
-        regraPrint(texto, body);
-        return; // ⛔ PARA TUDO AQUI
-    }
+        // 🖨️ PRINT (CTRL+V) — BLOQUEIO TOTAL
+        if (body.dataset.print === '1') {
+            regraPrint(texto, body);
+            return; // ⛔ PARA TUDO AQUI
+        }
         const linhas = texto.split('\n');
         const banco = identificarBanco(texto);
 
@@ -2860,46 +3038,128 @@ function regraPrint(texto, body) {
 
 
 
-        // 📄 Linhas atuais (após regra do banco)
-        const linhasHTML = body.querySelectorAll('.doc-line');
-
-        // 🛟 FALLBACK UNIVERSAL — só se banco não resolveu
-        if (banco !== 'C6' && !jaEstaFinal(body)) {
-
-            const valor = extrairValorUniversal(linhasHTML);
-            const hora  = extrairHoraUniversal(linhasHTML);
-            let nome = extrairNomeGlobal(linhasHTML);
-            if (!nome) {
-                nome = extrairNomeUniversal(linhasHTML);
-            }
-
-            if (valor || hora || nome) {
-                body.innerHTML = `
-            <div class="doc-line">
-                <span class="ln">1</span>
-                <span style="color:#2E7D32;font-weight:bold">${valor || '-'}</span>
-            </div>
-            <div class="doc-line">
-                <span class="ln">2</span>
-                <span style="color:#1976D2;font-weight:bold">${removerSegundos(hora) || '-'}</span>
-            </div>
-            <div class="doc-line">
-                <span class="ln">3</span>
-                <span style="color:red;font-weight:bold">${nome || '-'}</span>
-            </div>
-        `;
-            }
+        // 🔥 FALLBACK UNIVERSAL DEFINITIVO
+        if (!jaEstaFinal(body)) {
+            regraPrint(texto, body);
         }
+
     }
     function chaveArquivo(file) {
         return `${file.name}__${file.size}__${file.type}`;
     }
+    async function completarCardSelecionadoComPrint(file) {
+        const card = document.querySelector('.doc.selecionado');
+        if (!card) return false;
+
+        const body = card.querySelector('.doc-body');
+        const id = body?.dataset?.ocrId;
+        if (!id) return false;
+
+        const registro = registrosOCR.find(r => r.id === id);
+        if (!registro) return false;
+
+        // OCR silencioso
+        let texto = '';
+        if (file.type.includes('pdf')) {
+            texto = await ocrPDFTemp(file);
+        } else {
+            texto = await ocrImgTemp(file);
+        }
+
+        const dados = extrairDadosViaBanco(texto);
+
+        // 🔍 COMPLETA SOMENTE O QUE ESTIVER VAZIO
+        if (campoVazio(registro.nome) && dados.nome && dados.nome !== '-') {
+            registro.nome = dados.nome;
+        }
+
+        if (campoVazio(registro.hora) && dados.hora && dados.hora !== '-') {
+            registro.hora = dados.hora;
+        }
+
+        if (campoVazio(registro.valor) && dados.valor && dados.valor !== '-') {
+            registro.valor = dados.valor;
+        }
+
+        salvarStorage();
+        atualizarVisualFinal(body);
+        atualizarTotalTela();
+        flashCard(card, 'flash-add');
+
+        return true;
+    }
+
+    function extrairDadosViaBanco(texto) {
+
+        MODO_PARSE = true; // 🔒 não salva nada
+
+        const banco = identificarBanco(texto);
+
+        let nome = '';
+        let hora = '';
+        let valor = '';
+
+        const fakeBody = document.createElement('div');
+
+        // replica EXATAMENTE o corpo numerado
+        fakeBody.innerHTML = texto
+            .split('\n')
+            .map((l, i) =>
+                 `<div class="doc-line">
+         <span class="ln">${i + 1}</span>
+         <span>${l}</span>
+       </div>`
+                ).join('');
+
+        // 🔥 aplica a regra do banco, igual ao OCR normal
+        switch (banco) {
+            case 'BB': regraBancoBrasil(texto, fakeBody); break;
+            case 'BRADESCO': regraBradesco(texto, fakeBody); break;
+            case 'NUBANK': regraNubank(texto, fakeBody); break;
+            case 'INTER': regraBancoInter(texto, fakeBody); break;
+            case 'MERCADO_PAGO': regraMercadoPago(texto, fakeBody); break;
+            case 'C6': regraC6Bank(texto, fakeBody); break;
+            case 'ITAU': regraItau(texto, fakeBody); break;
+            case 'SANTANDER': regraSantander(texto, fakeBody); break;
+            case 'PICPAY': regraPicPay(texto, fakeBody); break;
+            case 'CAIXA': regraCaixa(texto, fakeBody); break;
+            case 'PASSAGEM': regraPassagem(texto, fakeBody); break;
+
+            default: { // ⚠️ BLOCO OBRIGATÓRIO
+                const linhas = fakeBody.querySelectorAll('.doc-line');
+                nome  = extrairNomeGlobal(linhas) || '';
+                hora  = extrairHoraUniversal(linhas) || '';
+                valor = extrairValorUniversal(linhas) || '';
+                break;
+            }
+        }
+
+        const final = fakeBody.querySelector('.doc-final');
+        if (final) {
+            nome  = final.querySelector('.final-nome')?.textContent || nome;
+            hora  = final.querySelector('.final-hora')?.textContent || hora;
+            valor = final.querySelector('.final-pix')
+                ?.textContent
+                ?.replace(/[^\d,]/g, '') || valor;
+        }
+
+        MODO_PARSE = false; // 🔓 libera
+
+        return { banco, nome, hora, valor };
+    }
+
     /* ========= OCR ========= */
     async function processFiles(files) {
+
+        // ⛔ BLOQUEIA se estiver usando ➕ Adicionar
+        if (MODO_ADICIONAR) {
+            console.log('🚫 processFiles bloqueado (modo adicionar)');
+            return;
+        }
+
         for (const file of files) {
             const chave = chaveArquivo(file);
 
-            // 🚫 já foi anexado
             if (arquivosAnexados.has(chave)) {
                 console.log('Arquivo ignorado (duplicado):', file.name);
                 continue;
@@ -2910,21 +3170,90 @@ function regraPrint(texto, body) {
             processFile(file);
         }
     }
+
     function atualizarContador() {
         counter.textContent = `ARQUIVO ${registrosOCR.length}`;
     }
+
+    async function ocrImgTemp(file){
+        const { data } = await Tesseract.recognize(file, 'por');
+        return data.text || '';
+    }
+
+    async function ocrPDFTemp(file){
+        let texto = '';
+        const buf = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const p = await pdf.getPage(i);
+            const v = p.getViewport({scale:2});
+            const c = document.createElement('canvas');
+            const ctx = c.getContext('2d');
+            c.width = v.width;
+            c.height = v.height;
+            await p.render({canvasContext:ctx,viewport:v}).promise;
+            const blob = await new Promise(r=>c.toBlob(r));
+            const { data } = await Tesseract.recognize(blob,'por');
+            texto += '\n' + data.text;
+        }
+        return texto;
+    }
+
+    function extrairValorTextoSimples(texto){
+        const m = texto.match(/R\$\s*(\d+)[,.](\d{2})/);
+        if (!m) return null;
+        return Number(`${m[1]}.${m[2]}`);
+    }
+
+    function flashCard(card, tipo) {
+        card.classList.remove(
+            'flash-copy',
+            'flash-edit',
+            'flash-taxa',
+            'flash-remove',
+            'flash-add'
+        );
+
+        card.classList.add('flash', tipo);
+
+        // força reflow pra animar sempre
+        card.offsetHeight;
+
+        setTimeout(() => {
+            card.classList.remove('flash', tipo);
+        }, 700);
+    }
+
     function criarDoc(titulo){
         const d=document.createElement('div');
         d.className='doc';
-        d.innerHTML=`
-   <div class="doc-header">${titulo}</div>
-    <div class="doc-body"></div>
-    <div class="doc-actions">
-  <button class="copy">📋 Copiar</button>
-  <button class="editar">✏️ Editar</button>
-  <button class="taxa">💰 Taxa</button>
-  <button class="remove">➖ Remover</button>
-</div>`;
+
+        // ===== SELEÇÃO VISUAL DO CARD =====
+        d.addEventListener('click', (e) => {
+            if (e.target.closest('button')) return;
+
+            const jaSelecionado = d.classList.contains('selecionado');
+
+            document.querySelectorAll('.doc.selecionado')
+                .forEach(el => el.classList.remove('selecionado'));
+
+            if (!jaSelecionado) {
+                d.classList.add('selecionado');
+            }
+        });
+
+        d.innerHTML = `
+  <div class="doc-header">${titulo}</div>
+  <div class="doc-body"></div>
+  <div class="doc-actions">
+    <button class="copy">📋 Copiar</button>
+    <button class="editar">✏️ Editar</button>
+    <button class="taxa">💰 Taxa</button>
+    <button class="add">➕ Adicionar</button>
+    <button class="remove">➖ Remover</button>
+  </div>
+`;
         const body=d.querySelector('.doc-body');
         d.querySelector('.doc-header').onclick=()=>{
             body.style.display=body.style.display==='none'?'block':'none';
@@ -2945,65 +3274,123 @@ function regraPrint(texto, body) {
             setTimeout(() => {
                 btn.classList.remove('copiado');
                 btn.innerHTML = original;
+                flashCard(d, 'flash-copy');
+
             }, 1000);
         };
-       d.querySelector('.editar').onclick = () => {
-    const id = body.dataset.ocrId;
-    if (!id) return;
+        d.querySelector('.add').onclick = () => {
+            const id = body.dataset.ocrId;
+            if (!id) return;
 
-    const registro = registrosOCR.find(r => r.id === id);
-    if (!registro) return;
+            MODO_ADICIONAR = true;
 
-    const nomeEl = body.querySelector('.final-nome');
-    const horaEl = body.querySelector('.final-hora');
-    const pixEl  = body.querySelector('.final-pix');
-    const taxaEl = body.querySelector('.final-taxa');
+            // 🔥 ESSENCIAL: limpa antes de abrir
+            inputAdd.value = '';
 
-    if (!nomeEl || !horaEl || !pixEl ) return;
+            inputAdd.onchange = async () => {
+                const files = [...inputAdd.files];
+                if (!files.length) {
+                    MODO_ADICIONAR = false;
+                    return;
+                }
 
-    // 🔓 ativa edição
-    [nomeEl, horaEl, pixEl].forEach(el => {
-        el.contentEditable = true;
-        el.classList.add('edit-field');
-    });
+                const registro = registrosOCR.find(r => r.id === id);
+                if (!registro) {
+                    MODO_ADICIONAR = false;
+                    return;
+                }
 
-    nomeEl.focus();
+                for (const file of files) {
+                    let texto = '';
+                    if (file.type.includes('pdf')) {
+                        texto = await ocrPDFTemp(file);
+                    } else {
+                        texto = await ocrImgTemp(file);
+                    }
 
-    const salvar = () => {
-        // 🧾 salva dados limpos
-        registro.nome = nomeEl.textContent.trim();
-        registro.hora = horaEl.textContent.trim();
+                    const dados = extrairDadosViaBanco(texto);
 
-        registro.valor = pixEl.textContent
-            .replace(/[^\d,]/g, '')
-            .trim();
+                    // 🔁 SUBSTITUI (NUNCA SOMA / NUNCA CRIA NOVO)
+                    if (dados.nome && dados.nome !== '-') registro.nome = dados.nome;
+                    if (dados.hora && dados.hora !== '-') registro.hora = dados.hora;
+                    if (dados.valor && dados.valor !== '-') registro.valor = dados.valor;
 
+                    salvarStorage();
+                    atualizarVisualFinal(body);
+                    atualizarTotalTela();
+                    break; // ⛔ apenas 1 arquivo
+                }
 
+                flashCard(d, 'flash-add');
 
-        // 🔒 trava edição
-        [nomeEl, horaEl, pixEl].forEach(el => {
-            el.contentEditable = false;
-            el.classList.remove('edit-field');
-        });
+                inputAdd.value = '';
+                MODO_ADICIONAR = false;
+            };
 
-        salvarStorage();
-        atualizarVisualFinal(body);
-        atualizarTotalTela();
-    };
-
-    // ⏎ ENTER salva
-    [nomeEl, horaEl, pixEl].forEach(el => {
-        el.onkeydown = e => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                salvar();
-            }
+            inputAdd.click();
         };
-    });
 
-    // 🖱️ sair do último campo salva
-    taxaEl.onblur = salvar;
-};
+
+        d.querySelector('.editar').onclick = () => {
+            const id = body.dataset.ocrId;
+            if (!id) return;
+
+            const registro = registrosOCR.find(r => r.id === id);
+            if (!registro) return;
+
+            const nomeEl = body.querySelector('.final-nome');
+            const horaEl = body.querySelector('.final-hora');
+            const pixEl  = body.querySelector('.final-pix');
+            const taxaEl = body.querySelector('.final-taxa');
+
+            if (!nomeEl || !horaEl || !pixEl ) return;
+
+            // 🔓 ativa edição
+            [nomeEl, horaEl, pixEl].forEach(el => {
+                el.contentEditable = true;
+                el.classList.add('edit-field');
+            });
+
+            nomeEl.focus();
+
+            const salvar = () => {
+                // 🧾 salva dados limpos
+                registro.nome = nomeEl.textContent.trim();
+                registro.hora = horaEl.textContent.trim();
+
+                registro.valor = pixEl.textContent
+                    .replace(/[^\d,]/g, '')
+                    .trim();
+
+
+
+                // 🔒 trava edição
+                [nomeEl, horaEl, pixEl].forEach(el => {
+                    el.contentEditable = false;
+                    el.classList.remove('edit-field');
+                });
+
+                salvarStorage();
+                atualizarVisualFinal(body);
+                flashCard(body.closest('.doc'), 'flash-edit');
+
+                atualizarTotalTela();
+            };
+
+            // ⏎ ENTER salva
+            [nomeEl, horaEl, pixEl].forEach(el => {
+                el.onkeydown = e => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        salvar();
+                    }
+                };
+            });
+
+            // 🖱️ sair do último campo salva
+            taxaEl.onblur = salvar;
+
+        };
 
 
 
@@ -3035,7 +3422,10 @@ function regraPrint(texto, body) {
             registro.taxa = n; // ✅ número real
             salvarStorage();
             atualizarVisualFinal(body);
+
             alert(`✅ Taxa R$ ${n.toFixed(2)} salva`);
+            flashCard(d, 'flash-taxa');
+
         };
 
         d.querySelector('.remove').onclick = () => {
@@ -3055,6 +3445,11 @@ function regraPrint(texto, body) {
             // remove da tela
             const chave = d.getAttribute('data-chave');
             if (chave) arquivosAnexados.delete(chave);
+            flashCard(d, 'flash-remove');
+
+            setTimeout(() => {
+                d.remove();
+            }, 300);
 
             d.remove();
             atualizarContador();
@@ -3063,25 +3458,32 @@ function regraPrint(texto, body) {
         list.prepend(d);
         return body;
     }
-
-    async function processFile(file, isPrint = false){
-    const body = criarDoc(file.name);
-    body.dataset.nomeArquivo = file.name;
-
-    if (isPrint) {
-        body.dataset.print = '1'; // 🖨️ MARCA PRINT
+    async function ocrSilencioso(file) {
+        if (file.type.includes('pdf')) {
+            return await ocrPDFTemp(file);
+        } else {
+            return await ocrImgTemp(file);
+        }
     }
 
-    body.closest('.doc').setAttribute('data-chave', chaveArquivo(file));
-    body.textContent = '🔍 Processando...\n';
+    async function processFile(file, isPrint = false){
+        const body = criarDoc(file.name);
+        body.dataset.nomeArquivo = file.name;
 
-    if (file.type.includes('pdf')) await ocrPDF(file, body);
-    else await ocrImg(file, body);
+        if (isPrint) {
+            body.dataset.print = '1'; // 🖨️ MARCA PRINT
+        }
 
-    body.textContent += '\n✅ Finalizado';
-    aplicarRegras(body);
-    atualizarTotalTela();
-}
+        body.closest('.doc').setAttribute('data-chave', chaveArquivo(file));
+        body.textContent = '🔍 Processando...\n';
+
+        if (file.type.includes('pdf')) await ocrPDF(file, body);
+        else await ocrImg(file, body);
+
+        body.textContent += '\n✅ Finalizado';
+        aplicarRegras(body);
+        atualizarTotalTela();
+    }
 
 
     async function ocrImg(file,target){
@@ -3105,13 +3507,20 @@ function regraPrint(texto, body) {
             target.textContent+=`\n📄 Página ${i}\n${data.text}`;
         }
     }
-    /* ========= PASTE ========= */
-    document.addEventListener('paste', e => {
-    for (const i of e.clipboardData?.items || []) {
-        if (i.type.startsWith('image/')) {
-            processFile(i.getAsFile(), true); // 🔥 PRINT ISOLADO
+    document.addEventListener('paste', async e => {
+        for (const i of e.clipboardData?.items || []) {
+            if (!i.type.startsWith('image/')) continue;
+
+            const file = i.getAsFile();
+
+            // 🎯 tenta completar card selecionado
+            const usado = await completarCardSelecionadoComPrint(file);
+
+            // 🆕 se não tinha card selecionado, cria novo (comportamento antigo)
+            if (!usado) {
+                processFile(file, true);
+            }
         }
-    }
-});
+    });
 
 })();
