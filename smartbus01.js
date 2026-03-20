@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SMARTBUS01
 // @namespace    https://smartbus.unificado
-// @version      1.0.0
+// @version      1.0.5
 // @description  Print reserva + copiar trecho + copiar com clique + copiar link
 // @match        https://prod-guanabara-frontoffice-smartbus.smarttravelit.com/*
 // @grant        GM_addStyle
@@ -9,32 +9,44 @@
 // @author       GILVAN
 // ==/UserScript==
 
-
 /* =========================================================
    SCRIPT 1 — SMART - Print Reserva
+   Só aparece na tela de Reserva
+   Captura os blocos corretos da reserva
 ========================================================= */
 (() => {
- 'use strict';
+  'use strict';
 
-  const SELECTORS = [
-    'div.row.row-coupon-summary.m-b-0',
-    'div.card.card-coupon-area',
-    'li.li-total-value'
-  ];
-
-  let botaoCriado = false;
   let ultimaURL = location.href;
 
+  function isTelaReserva() {
+    const titulo = document.querySelector('.page-title')?.textContent?.trim();
+    return titulo === 'Reserva' && !!document.querySelector('div.card.card-coupon-area');
+  }
+
+  function removerBotao() {
+    const box = document.querySelector('.print-reserva-box-topo');
+    if (box) box.remove();
+  }
+
   function criarBotao() {
-    const card = document.querySelector('div.card.card-coupon-area');
-    if (!card) return;
+    if (!isTelaReserva()) {
+      removerBotao();
+      return;
+    }
+
+    const titulo = document.querySelector('.page-title');
+    if (!titulo) return;
 
     if (document.getElementById('btn-print-reserva')) return;
 
-    botaoCriado = true;
+    const header = titulo.parentElement;
+    if (!header) return;
+
+    header.style.position = 'relative';
 
     const box = document.createElement('div');
-    box.className = 'print-reserva-box';
+    box.className = 'print-reserva-box-topo';
 
     const btn = document.createElement('button');
     btn.id = 'btn-print-reserva';
@@ -42,16 +54,43 @@
     btn.addEventListener('click', tirarPrint);
 
     box.appendChild(btn);
-    card.prepend(box);
+    header.appendChild(box);
+  }
+
+  function coletarElementosReserva() {
+    const elementos = [];
+
+    const resumo = document.querySelector('div.row.row-coupon-summary.m-b-0');
+    if (resumo) elementos.push(resumo);
+
+    const itinerario = document.querySelector('div.card.card-coupon-area');
+    if (itinerario) elementos.push(itinerario);
+
+    const colunaValores = itinerario?.nextElementSibling;
+    if (
+      colunaValores &&
+      /valores|pagamentos/i.test(colunaValores.innerText || '')
+    ) {
+      elementos.push(colunaValores);
+    }
+
+    const total = document.querySelector('li.li-total-value');
+    if (total) elementos.push(total);
+
+    return elementos.filter(Boolean);
   }
 
   async function tirarPrint() {
-    const box = document.querySelector('.print-reserva-box');
+    if (!isTelaReserva()) {
+      alert('Essa função só pode ser usada na tela de Reserva.');
+      removerBotao();
+      return;
+    }
+
+    const box = document.querySelector('.print-reserva-box-topo');
     if (box) box.style.display = 'none';
 
-    const elementos = SELECTORS
-      .map(sel => document.querySelector(sel))
-      .filter(Boolean);
+    const elementos = coletarElementosReserva();
 
     if (!elementos.length) {
       alert('Área da reserva não encontrada.');
@@ -63,34 +102,75 @@
     container.style.position = 'fixed';
     container.style.left = '-10000px';
     container.style.top = '0';
-    container.style.background = '#fff';
-    container.style.padding = '16px';
-    container.style.width = '1000px';
+    container.style.width = '1400px';
+    container.style.background = '#ffffff';
+    container.style.padding = '12px';
+    container.style.boxSizing = 'border-box';
+    container.style.zIndex = '-1';
 
-    for (const el of elementos) {
+    const linha = document.createElement('div');
+    linha.style.display = 'flex';
+    linha.style.gap = '28px';
+    linha.style.alignItems = 'flex-start';
+
+    let colunaEsquerda = null;
+    let colunaDireita = null;
+
+    elementos.forEach((el, index) => {
       const clone = el.cloneNode(true);
+      clone.style.margin = '0';
+      clone.style.boxSizing = 'border-box';
 
-      if (clone.matches('li.li-total-value')) {
-        clone.style.fontSize = '24px';
+      if (index === 0) {
+        clone.style.marginBottom = '16px';
+        container.appendChild(clone);
+        return;
+      }
+
+      if (el.matches('div.card.card-coupon-area')) {
+        colunaEsquerda = document.createElement('div');
+        colunaEsquerda.style.flex = '0 0 66%';
+        colunaEsquerda.appendChild(clone);
+        return;
+      }
+
+      const texto = (el.innerText || '').toLowerCase();
+      if (texto.includes('valores') || texto.includes('pagamentos')) {
+        colunaDireita = document.createElement('div');
+        colunaDireita.style.flex = '0 0 32%';
+        colunaDireita.appendChild(clone);
+        return;
+      }
+
+      if (el.matches('li.li-total-value')) {
+        clone.style.fontSize = '22px';
         clone.style.fontWeight = 'bold';
-        clone.style.padding = '16px';
+        clone.style.padding = '14px';
         clone.style.background = '#e8f5e9';
         clone.style.borderTop = '2px solid #4caf50';
         clone.style.textAlign = 'right';
+        clone.style.listStyle = 'none';
+        clone.style.marginTop = '16px';
+        container.appendChild(clone);
       }
+    });
 
-      clone.style.marginBottom = '16px';
-      container.appendChild(clone);
+    if (colunaEsquerda || colunaDireita) {
+      if (colunaEsquerda) linha.appendChild(colunaEsquerda);
+      if (colunaDireita) linha.appendChild(colunaDireita);
+      container.appendChild(linha);
     }
 
     document.body.appendChild(container);
 
     try {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+
       const canvas = await html2canvas(container, {
-        scale: 1.5,
-        backgroundColor: '#fff',
+        scale: 1,
+        backgroundColor: '#ffffff',
         logging: false,
-        useCORS: true
+        useCORS: false
       });
 
       const blob = await new Promise(resolve =>
@@ -106,16 +186,17 @@
       console.error(err);
       alert('Erro ao gerar o print.');
     } finally {
-      document.body.removeChild(container);
+      container.remove();
       if (box) box.style.display = '';
     }
   }
 
   GM_addStyle(`
-    .print-reserva-box {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 10px;
+    .print-reserva-box-topo {
+      position: absolute;
+      top: 6px;
+      left: 185px;
+      z-index: 9999;
     }
 
     #btn-print-reserva {
@@ -134,66 +215,77 @@
     }
   `);
 
-  /* ================================
-     OBSERVA MUDANÇA DE ROTA (SPA)
-  ================================= */
   setInterval(() => {
     if (location.href !== ultimaURL) {
       ultimaURL = location.href;
-      botaoCriado = false;
-
-      // pequeno delay para o DOM montar
-      setTimeout(criarBotao, 500);
+      setTimeout(() => {
+        removerBotao();
+        criarBotao();
+      }, 300);
     }
   }, 500);
 
-  /* ================================
-     OBSERVA DOM NORMAL
-  ================================= */
-  const observer = new MutationObserver(criarBotao);
+  const observer = new MutationObserver(() => {
+    if (isTelaReserva()) {
+      criarBotao();
+    } else {
+      removerBotao();
+    }
+  });
+
   observer.observe(document.body, { childList: true, subtree: true });
 
+  if (isTelaReserva()) criarBotao();
 })();
-
 
 /* =========================================================
    SCRIPT 2 — Botão Copiar Trecho Individual
 ========================================================= */
-(function () {
+(() => {
   'use strict';
 
   function criarBotoesCopiar() {
-    const trechos = document.querySelectorAll("div.col-search-way");
+    const trechos = document.querySelectorAll('div.col-search-way');
     if (!trechos.length) return;
 
     trechos.forEach(container => {
-      if (container.querySelector(".btn-copiar-trecho")) return;
+      if (container.querySelector('.btn-copiar-trecho')) return;
 
-      const btn = document.createElement("button");
-      btn.className = "btn-copiar-trecho";
-      btn.innerText = "Copiar";
+      const btn = document.createElement('button');
+      btn.className = 'btn-copiar-trecho';
+      btn.innerText = 'Copiar';
 
-      btn.addEventListener("click", () => {
+      btn.addEventListener('click', () => {
         const textos = [];
+
         container.childNodes.forEach(node => {
           if (node.nodeType === Node.TEXT_NODE) {
             textos.push(node.textContent.trim());
-          } else if (node.nodeType === Node.ELEMENT_NODE && !node.classList.contains('btn-copiar-trecho')) {
+          } else if (
+            node.nodeType === Node.ELEMENT_NODE &&
+            !node.classList.contains('btn-copiar-trecho')
+          ) {
             textos.push(node.innerText.trim());
           }
         });
 
-        const textoFinal = textos.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+        const textoFinal = textos
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
 
         navigator.clipboard.writeText(textoFinal).then(() => {
-          btn.innerText = "✅ Copiado";
-          setTimeout(() => btn.innerText = "Copiar", 1500);
+          btn.innerText = '✅ Copiado';
+          setTimeout(() => {
+            btn.innerText = 'Copiar';
+          }, 1500);
         }).catch(() => {
-          alert("Falha ao copiar para a área de transferência");
+          alert('Falha ao copiar para a área de transferência');
         });
       });
 
-      container.style.position = "relative";
+      container.style.position = 'relative';
       container.appendChild(btn);
     });
   }
@@ -214,21 +306,25 @@
       box-shadow: 0 2px 6px rgba(0,0,0,.2);
       user-select: none;
     }
+
     .btn-copiar-trecho:hover {
       background: #5c0000;
     }
   `);
 
-  const observer = new MutationObserver(criarBotoesCopiar);
+  const observer = new MutationObserver(() => {
+    criarBotoesCopiar();
+  });
+
   observer.observe(document.body, { childList: true, subtree: true });
 
+  criarBotoesCopiar();
 })();
-
 
 /* =========================================================
    SCRIPT 3 — Copiar com Clique
 ========================================================= */
-(function () {
+(() => {
   'use strict';
 
   function isReserva() {
@@ -254,13 +350,6 @@
     if (!el || el.dataset.copiarAtivo) return;
     if (ehBadgeTarifaOuStatus(el)) return;
 
-    let texto = el.textContent?.trim();
-    if (!texto) return;
-
-    if (tipo === 'documento') {
-      texto = normalizarDocumento(texto);
-    }
-
     el.dataset.copiarAtivo = 'true';
 
     el.style.border = '1px dashed gray';
@@ -271,6 +360,14 @@
 
     el.addEventListener('click', (e) => {
       e.stopPropagation();
+
+      let texto = el.textContent?.trim() || '';
+      if (!texto) return;
+
+      if (tipo === 'documento') {
+        texto = normalizarDocumento(texto);
+      }
+
       navigator.clipboard.writeText(texto);
 
       el.style.borderColor = 'green';
@@ -291,7 +388,9 @@
       if (/^[A-Z0-9]{5,8}$/.test(texto)) aplicarCliqueCopiar(el);
     });
 
-    document.querySelectorAll('.col-coupon-service-title b').forEach(el => aplicarCliqueCopiar(el));
+    document.querySelectorAll('.col-coupon-service-title b').forEach(el => {
+      aplicarCliqueCopiar(el);
+    });
 
     document.querySelectorAll('.col-coupon-service b').forEach(b => {
       if (/\d{2}\/\d{2}\/\d{4}/.test(b.textContent)) aplicarCliqueCopiar(b);
@@ -324,10 +423,6 @@
     });
   }
 
-  const observer = new MutationObserver(aplicar);
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  aplicar();
   GM_addStyle(`
     .smart-copy-wrapper {
       display: flex;
@@ -355,41 +450,55 @@
   `);
 
   function moverBotao() {
-    // modal correto
     const modal = document.querySelector('.div-lightbox-content');
     if (!modal) return;
 
-    // input "Dados"
     const input = modal.querySelector('input[type="text"]');
     if (!input || input.dataset.smartCopy) return;
 
     input.dataset.smartCopy = 'true';
 
-    // cria wrapper
     const wrapper = document.createElement('div');
     wrapper.className = 'smart-copy-wrapper';
 
     input.parentNode.insertBefore(wrapper, input);
     wrapper.appendChild(input);
 
-    // cria botão
     const btn = document.createElement('button');
     btn.className = 'smart-copy-btn';
     btn.textContent = 'Copiar link';
 
-    btn.onclick = () => {
-      input.select();
-      input.setSelectionRange(0, 99999);
-      document.execCommand('copy');
-      btn.textContent = '✅ Copiado';
-      setTimeout(() => (btn.textContent = 'Copiar link'), 1200);
+    btn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(input.value || '');
+        btn.textContent = '✅ Copiado';
+        setTimeout(() => {
+          btn.textContent = 'Copiar link';
+        }, 1200);
+      } catch (e) {
+        input.select();
+        input.setSelectionRange(0, 99999);
+        document.execCommand('copy');
+        btn.textContent = '✅ Copiado';
+        setTimeout(() => {
+          btn.textContent = 'Copiar link';
+        }, 1200);
+      }
     };
 
     wrapper.appendChild(btn);
   }
 
-  new MutationObserver(moverBotao).observe(document.body, {
+  const observer = new MutationObserver(() => {
+    aplicar();
+    moverBotao();
+  });
+
+  observer.observe(document.body, {
     childList: true,
     subtree: true
   });
+
+  aplicar();
+  moverBotao();
 })();
