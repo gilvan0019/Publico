@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SmartBus Unificado - Completo + Configurações
 // @namespace    https://smartbus.unificado
-// @version      5.1.0
-// @description  Documento por passageiro + print reserva + copiar dados + print horários + arrasto promo/normal + painel de configurações com botão móvel
+// @version      5.6.0
+// @description  Documento por passageiro + print reserva + copiar dados + print horários + arrasto promo/normal + painel de configurações com botão móvel + idade completa abaixo da data de nascimento + validação de CPF + lógica melhor de RG
 // @match        https://prod-guanabara-frontoffice-smartbus.smarttravelit.com/*
 // @grant        none
 // @require      https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
@@ -15,17 +15,17 @@
   /* =========================================================
      CONFIG
   ========================================================= */
-  const CONFIG_KEY = 'smartbus_unificado_config_v5';
+  const CONFIG_KEY = 'smartbus_unificado_config_v6';
   const CONFIG_FAB_POS_KEY = 'smartbus_unificado_fab_pos_v1';
 
   const DEFAULT_CONFIG = {
     passengerDocPanel: true,
-    reservaPrint: true,
+    reservaPrint: false,
     copyTrecho: true,
     clickCopy: true,
     copyLink: true,
-    horariosPrint: true,
-    promoDrag: true
+    horariosPrint: false,
+    promoDrag: false
   };
 
   function loadConfig() {
@@ -77,6 +77,31 @@
     const d = onlyDigits(cpf);
     if (d.length !== 11) return cpf || '';
     return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  }
+
+  function isValidCPF(cpf) {
+    const d = onlyDigits(cpf);
+
+    if (d.length !== 11) return false;
+    if (/^(\d)\1{10}$/.test(d)) return false;
+
+    function calcCheckDigit(base, startWeight) {
+      let sum = 0;
+
+      for (let i = 0; i < base.length; i++) {
+        sum += Number(base[i]) * (startWeight - i);
+      }
+
+      let result = (sum * 10) % 11;
+      if (result === 10) result = 0;
+
+      return result;
+    }
+
+    const digit1 = calcCheckDigit(d.slice(0, 9), 10);
+    const digit2 = calcCheckDigit(d.slice(0, 10), 11);
+
+    return digit1 === Number(d[9]) && digit2 === Number(d[10]);
   }
 
   function formatPhone(phone) {
@@ -310,94 +335,152 @@
       position: fixed;
       left: 18px;
       bottom: 18px;
-      width: 52px;
-      height: 52px;
-      border: none;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255,255,255,.08);
       border-radius: 999px;
-      background: #1f2933;
+      background: linear-gradient(180deg, #243241 0%, #101820 100%);
       color: #fff;
-      font-size: 22px;
+      font-size: 19px;
       cursor: grab;
       z-index: 1000001;
-      box-shadow: 0 6px 18px rgba(0,0,0,.28);
+      box-shadow:
+        0 10px 24px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.08);
       touch-action: none;
       user-select: none;
+      transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
     }
 
     #sb-config-fab:hover {
-      background: #000;
+      background: linear-gradient(180deg, #2b3c4d 0%, #141d26 100%);
+      transform: translateY(-1px);
+      box-shadow:
+        0 14px 28px rgba(0,0,0,.32),
+        inset 0 1px 0 rgba(255,255,255,.10);
     }
 
     #sb-config-fab:active {
       cursor: grabbing;
+      transform: scale(0.98);
+    }
+
+    #sb-config-fab .sb-fab-icon {
+      line-height: 1;
+      transform: translateY(-1px);
+      pointer-events: none;
     }
 
     #sb-config-panel {
       position: fixed;
       left: 18px;
-      bottom: 78px;
-      width: 300px;
-      max-width: calc(100vw - 36px);
-      background: #fff;
+      bottom: 74px;
+      width: 315px;
+      max-width: calc(100vw - 28px);
+      background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%);
       color: #222;
-      border: 1px solid #d9dee7;
-      border-radius: 14px;
-      padding: 14px;
-      box-shadow: 0 12px 30px rgba(0,0,0,.22);
+      border: 1px solid #d7deea;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 20px 45px rgba(0,0,0,.22);
       z-index: 1000001;
       font-family: Arial, sans-serif;
       display: none;
+      box-sizing: border-box;
     }
 
     #sb-config-panel.open {
       display: block;
     }
 
+    #sb-config-panel .sb-config-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
     #sb-config-panel .sb-config-title {
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 700;
-      margin-bottom: 10px;
+      margin: 0;
       color: #1f2933;
+      line-height: 1.2;
     }
 
     #sb-config-panel .sb-config-sub {
       font-size: 12px;
-      color: #666;
-      margin-bottom: 12px;
-      line-height: 1.4;
+      color: #66707a;
+      margin: 6px 0 0;
+      line-height: 1.45;
+    }
+
+    #sb-config-panel .sb-config-close {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #e2e8f0;
+      border-radius: 999px;
+      background: #fff;
+      color: #334155;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      flex: 0 0 auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+
+    #sb-config-panel .sb-config-close:hover {
+      background: #f8fafc;
     }
 
     #sb-config-panel .sb-config-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
     }
 
     #sb-config-panel .sb-config-item {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       font-size: 13px;
-      padding: 6px 0;
-      border-bottom: 1px solid #f0f2f5;
+      padding: 10px 12px;
+      border: 1px solid #eceff6;
+      border-radius: 12px;
+      background: #fff;
+      transition: background .15s ease, border-color .15s ease;
     }
 
-    #sb-config-panel .sb-config-item:last-child {
-      border-bottom: none;
+    #sb-config-panel .sb-config-item:hover {
+      background: #f8faff;
+      border-color: #d9def0;
     }
 
     #sb-config-panel input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
+      width: 17px;
+      height: 17px;
       cursor: pointer;
       flex: 0 0 auto;
+      accent-color: #b14bd4;
+    }
+
+    #sb-config-panel .sb-config-label {
+      line-height: 1.35;
+      font-weight: 600;
+      color: #2a3139;
     }
 
     #sb-config-panel .sb-config-footer {
       margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #eef1f6;
       font-size: 11px;
-      color: #666;
-      line-height: 1.4;
+      color: #67707a;
+      line-height: 1.45;
     }
 
     body.smartbus-print-force,
@@ -519,13 +602,19 @@
     const fab = document.createElement('button');
     fab.id = 'sb-config-fab';
     fab.type = 'button';
-    fab.textContent = '⚙';
+    fab.innerHTML = '<span class="sb-fab-icon">⚙</span>';
 
     const panel = document.createElement('div');
     panel.id = 'sb-config-panel';
     panel.innerHTML = `
-      <div class="sb-config-title">Configurações SmartBus</div>
-      <div class="sb-config-sub">Marque ou desmarque as funções que você quer usar. Salva automaticamente.</div>
+      <div class="sb-config-head">
+        <div>
+          <div class="sb-config-title">Configurações SmartBus</div>
+          <div class="sb-config-sub">Marque ou desmarque as funções que você quer usar. Salva automaticamente.</div>
+        </div>
+        <button class="sb-config-close" type="button" aria-label="Fechar">×</button>
+      </div>
+
       <div class="sb-config-list">
         ${[
           ['passengerDocPanel', 'Painel de documento por passageiro'],
@@ -538,14 +627,17 @@
         ].map(([key, label]) => `
           <label class="sb-config-item">
             <input type="checkbox" data-config-key="${key}" ${isEnabled(key) ? 'checked' : ''}>
-            <span>${label}</span>
+            <span class="sb-config-label">${label}</span>
           </label>
         `).join('')}
       </div>
+
       <div class="sb-config-footer">
         As opções ficam salvas mesmo depois de atualizar a página.
       </div>
     `;
+
+    const closeBtn = panel.querySelector('.sb-config-close');
 
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
@@ -578,7 +670,7 @@
 
     function positionPanel() {
       const fabRect = fab.getBoundingClientRect();
-      const panelWidth = 300;
+      const panelWidth = panel.offsetWidth || 315;
       const spacing = 10;
 
       let left = fabRect.left;
@@ -662,6 +754,11 @@
       }
     });
 
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      panel.classList.remove('open');
+    });
+
     panel.addEventListener('change', (e) => {
       const input = e.target.closest('input[data-config-key]');
       if (!input) return;
@@ -674,7 +771,7 @@
 
     document.addEventListener('click', (e) => {
       if (!panel.classList.contains('open')) return;
-      if (e.target === fab || panel.contains(e.target)) return;
+      if (e.target === fab || fab.contains(e.target) || panel.contains(e.target)) return;
       panel.classList.remove('open');
     });
 
@@ -866,6 +963,30 @@
           color: #555 !important;
           line-height: 1.35 !important;
         }
+
+        .sb-age-badge {
+          position: absolute !important;
+          right: 0 !important;
+          top: calc(100% + 4px) !important;
+          background: #eef2ff !important;
+          color: #2f3fa4 !important;
+          border: 1px solid #c7d2fe !important;
+          border-radius: 4px !important;
+          padding: 3px 6px !important;
+          font-size: 9px !important;
+          font-weight: 700 !important;
+          line-height: 1.2 !important;
+          white-space: nowrap !important;
+          pointer-events: none !important;
+          z-index: 3 !important;
+          box-sizing: border-box !important;
+        }
+
+        .sb-age-badge.sb-age-warning {
+          background: #ffe8a3 !important;
+          color: #8a6500 !important;
+          border: 1px solid #c9a227 !important;
+        }
       `);
     }
 
@@ -939,141 +1060,165 @@
       return '';
     }
 
-    function extractCPF(text) {
-      const raw = String(text || '');
-
-      const sameLine = raw.match(/(?:^|\s)cpf\s*[:\-]?\s*([0-9.\-]{11,20})/i);
-      if (sameLine?.[1]) {
-        const d = onlyDigits(sameLine[1]);
-        if (d.length === 11) return formatCPF(d);
-      }
-
-      const candidates = getNumericCandidates(raw)
-        .filter(item => item.digits.length === 11)
-        .filter(item => {
-          if (/^(\d)\1+$/.test(item.digits)) return false;
-          if (/(telefone|fone|celular|rg|identidade|registro geral)/i.test(item.normalized)) return false;
-          return true;
-        });
-
-      if (!candidates.length) {
-        const m = raw.match(/\b\d{3}\.?\d{3}\.?\d{3}\-?\d{2}\b|\b\d{11}\b/);
-        if (!m) return '';
-        const d = onlyDigits(m[0]);
-        return d.length === 11 ? formatCPF(d) : '';
-      }
-
-      let best = '';
-      let bestScore = -9999;
-      const zeroStartCount = candidates.filter(c => c.digits.startsWith('0')).length;
-
-      for (const item of candidates) {
-        let score = 0;
-        if (item.normalized.includes('cpf')) score += 220;
-        if (/\b\d{3}\.?\d{3}\.?\d{3}\-?\d{2}\b/.test(item.line)) score += 80;
-        if (item.digits.startsWith('0')) score += 30;
-        if (zeroStartCount === 1 && item.digits.startsWith('0')) score += 70;
-        if (zeroStartCount === 1 && !item.digits.startsWith('0')) score -= 20;
-        if (/(telefone|fone|celular)/i.test(item.normalized)) score -= 200;
-        if (/(rg|identidade)/i.test(item.normalized)) score -= 150;
-        if (item.normalized.includes('poltrona')) score -= 200;
-
-        if (score > bestScore) {
-          bestScore = score;
-          best = item.digits;
-        }
-      }
-
-      return best ? formatCPF(best) : '';
+    function hasStrictCpfMask(text) {
+      return /\b\d{3}\.\d{3}\.\d{3}\-\d{2}\b/.test(String(text || ''));
     }
 
-    function extractLabeledRG(text) {
+    function extractExplicitCpfDigits(text) {
       const lines = getCleanLines(text);
-      const cpfDigits = onlyDigits(extractCPF(text));
 
       for (const line of lines) {
-        if (isBirthLine(line)) continue;
+        if (isBirthLine(line) || isSeatLine(line)) continue;
 
-        const sameLine = line.match(/\brg\s*[:\-]?\s*([0-9.\-xX]{5,30})/i);
-        if (sameLine?.[1]) {
-          const d = onlyDigits(sameLine[1]);
-          if (d && d !== cpfDigits && d.length >= 5 && d.length <= 20) return d;
-        }
+        const sameLine = line.match(/\bcpf\s*[:\-]?\s*([0-9.\-\s]{11,25})/i);
+        if (!sameLine?.[1]) continue;
 
-        const norm = normalizeText(line);
-        if (!norm.startsWith('rg')) continue;
+        const d = onlyDigits(sameLine[1]);
+        if (isValidCPF(d)) return d;
+      }
 
-        const digits = onlyDigits(line);
-        if (digits && digits !== cpfDigits && digits.length >= 5 && digits.length <= 20) {
-          return digits;
+      return '';
+    }
+
+    function extractExplicitRgDigits(text, cpfDigits = '') {
+      const lines = getCleanLines(text);
+
+      for (const line of lines) {
+        if (isBirthLine(line) || isSeatLine(line)) continue;
+
+        const sameLine = line.match(/\b(?:rg|identidade|registro geral)\s*[:\-]?\s*([0-9.\-xX\s]{5,30})/i);
+        if (!sameLine?.[1]) continue;
+
+        const d = onlyDigits(sameLine[1]);
+        if (!d) continue;
+        if (d === cpfDigits) continue;
+
+        if (d.length >= 5 && d.length <= 20) {
+          return d;
         }
       }
 
       return '';
     }
 
-    function extractRG(text) {
-      if (!text) return '';
-      const explicit = extractLabeledRG(text);
-      if (explicit) return explicit;
+    function extractDocumentFields(text) {
+      const raw = String(text || '');
 
-      const cleaned = String(text).replace(/\r/g, '\n');
-      const cpfDigits = onlyDigits(extractCPF(cleaned));
-      const candidates = getNumericCandidates(cleaned)
-        .filter(item => item.digits !== cpfDigits)
-        .filter(item => !(/^(\d)\1+$/.test(item.digits)))
-        .filter(item => !/^(tel|fone|telefone|celular)/i.test(item.normalized));
+      const candidates = getNumericCandidates(raw)
+        .filter(item => item.digits.length >= 5 && item.digits.length <= 20)
+        .filter(item => !/(telefone|fone|celular|tel|phone|mobile)/i.test(item.normalized))
+        .filter(item => !item.normalized.includes('poltrona'));
 
-      const eleven = candidates.filter(c => c.digits.length === 11);
+      let cpfDigits = extractExplicitCpfDigits(raw);
 
-      let best = '';
-      let bestScore = -9999;
+      if (!cpfDigits) {
+        const cpfCandidates = candidates.filter(item =>
+          item.digits.length === 11 && isValidCPF(item.digits)
+        );
 
-      for (const item of candidates) {
-        const d = item.digits;
-        const n = item.normalized;
-        let score = 0;
+        let bestCpf = '';
+        let bestCpfScore = -9999;
+        const zeroStartCount = cpfCandidates.filter(c => c.digits.startsWith('0')).length;
 
-        if (n.includes('rg')) score += 220;
-        if (n.includes('identidade')) score += 180;
-        if (n.includes('registro geral')) score += 180;
+        for (const item of cpfCandidates) {
+          let score = 0;
 
-        if (d.length >= 7 && d.length <= 10) score += 50;
-        if (d.length === 8) score += 20;
-        if (d.length === 9) score += 25;
-        if (d.length === 10) score += 15;
-        if (d.length === 11) score += 30;
-        if (d.length === 12) score += 55;
-        if (d.length === 13) score += 70;
-        if (d.length === 14) score += 45;
-        if (d.length > 11 && d.length <= 14) score += 30;
+          if (item.normalized.includes('cpf')) score += 220;
+          if (hasStrictCpfMask(item.line)) score += 140;
+          if (/\b\d{3}\.\d{3}\.\d{3}\.\d{2}\b/.test(item.line)) score -= 30;
+          if (/(rg|identidade|registro geral)/i.test(item.normalized)) score -= 140;
 
-        if (/^0+/.test(d)) score += 10;
-        if (/^20\d+/.test(d)) score += 12;
+          if (item.digits.startsWith('0')) score += 25;
+          if (zeroStartCount === 1 && item.digits.startsWith('0')) score += 50;
 
-        if (d.length === 11 && eleven.length >= 2) {
-          const hasZeroTwin = eleven.some(c => c.digits.startsWith('0'));
-          if (hasZeroTwin && !d.startsWith('0')) score += 55;
-          if (hasZeroTwin && d.startsWith('0')) score -= 35;
+          if (score > bestCpfScore) {
+            bestCpfScore = score;
+            bestCpf = item.digits;
+          }
         }
 
-        if (d.length < 5 || d.length > 20) score -= 100;
-        if (n.includes('poltrona')) score -= 200;
-        if (/(telefone|fone|celular)/i.test(n)) score -= 200;
+        cpfDigits = bestCpf;
+      }
 
-        if (score > bestScore) {
-          bestScore = score;
-          best = d;
+      let rgDigits = extractExplicitRgDigits(raw, cpfDigits);
+
+      if (!rgDigits) {
+        const rgCandidates = candidates.filter(item => item.digits !== cpfDigits);
+
+        let bestRg = '';
+        let bestRgScore = -9999;
+
+        for (const item of rgCandidates) {
+          const d = item.digits;
+          const n = item.normalized;
+          let score = 0;
+
+          if (n.includes('rg')) score += 220;
+          if (n.includes('identidade')) score += 180;
+          if (n.includes('registro geral')) score += 180;
+
+          if (d.length >= 7 && d.length <= 14) score += 60;
+          if (d.length === 8) score += 20;
+          if (d.length === 9) score += 25;
+          if (d.length === 10) score += 18;
+          if (d.length === 11) score += 20;
+          if (d.length === 12) score += 30;
+          if (d.length === 13) score += 35;
+          if (d.length === 14) score += 28;
+
+          if (hasStrictCpfMask(item.line)) score -= 160;
+          if (/\b\d{3}\.\d{3}\.\d{3}\.\d{2}\b/.test(item.line)) score += 55;
+
+          if (d.length === 11 && isValidCPF(d)) {
+            score += 15;
+          }
+
+          if (/^0+/.test(d)) score += 8;
+          if (/^20\d+/.test(d)) score += 10;
+
+          if (/(telefone|fone|celular|tel|phone|mobile)/i.test(n)) score -= 200;
+          if (n.includes('poltrona')) score -= 200;
+          if (d.length < 5 || d.length > 20) score -= 100;
+
+          if (score > bestRgScore) {
+            bestRgScore = score;
+            bestRg = d;
+          }
+        }
+
+        if (bestRgScore >= 20) {
+          rgDigits = bestRg;
         }
       }
 
-      return bestScore >= 20 ? best : '';
+      if (!rgDigits && cpfDigits) {
+        rgDigits = cpfDigits;
+      }
+
+      return {
+        cpf: cpfDigits ? formatCPF(cpfDigits) : '',
+        rg: rgDigits || ''
+      };
+    }
+
+    function extractCPF(text) {
+      return extractDocumentFields(text).cpf;
+    }
+
+    function extractLabeledRG(text) {
+      const cpfDigits = onlyDigits(extractDocumentFields(text).cpf);
+      return extractExplicitRgDigits(text, cpfDigits);
+    }
+
+    function extractRG(text) {
+      return extractDocumentFields(text).rg;
     }
 
     function extractLabeledPhone(text) {
       const lines = getCleanLines(text);
-      const cpfDigits = onlyDigits(extractCPF(text));
-      const rgDigits = extractLabeledRG(text);
+      const docs = extractDocumentFields(text);
+      const cpfDigits = onlyDigits(docs.cpf);
+      const rgDigits = onlyDigits(docs.rg);
 
       for (const line of lines) {
         const n = normalizeText(line);
@@ -1098,13 +1243,15 @@
 
     function extractPhone(text) {
       if (!text) return '';
+
       const explicit = extractLabeledPhone(text);
       if (explicit) return explicit;
 
       const cleaned = String(text).replace(/\r/g, '\n').replace(/[|]/g, ' ');
       const lines = getCleanLines(cleaned);
-      const cpfDigits = onlyDigits(extractCPF(cleaned));
-      const rgDigits = onlyDigits(extractRG(cleaned));
+      const docs = extractDocumentFields(cleaned);
+      const cpfDigits = onlyDigits(docs.cpf);
+      const rgDigits = onlyDigits(docs.rg);
 
       for (const line of lines) {
         const d = onlyDigits(line);
@@ -1116,7 +1263,10 @@
         if (isDateLike(line) || isBirthLine(line) || isSeatLine(line)) continue;
         if (/^(rg|registro geral|identidade)/i.test(n)) continue;
 
-        if ([10, 11].includes(d.length)) return formatPhone(d);
+        if ([10, 11].includes(d.length)) {
+          if (d.length === 11 && isValidCPF(d)) continue;
+          return formatPhone(d);
+        }
       }
 
       return '';
@@ -1206,9 +1356,10 @@
         }
       }
 
-      const cpf = extractCPF(text);
+      const docs = extractDocumentFields(text);
+      const cpf = docs.cpf;
       const nome = extractName(text);
-      const rg = extractRG(text) || cpf;
+      const rg = docs.rg || cpf;
       const telefone = extractPhone(text) || formatPhone('0000000001');
 
       return {
@@ -1307,6 +1458,135 @@
         RG: ${data.rg || data.cpf || '-'}<br>
         Nascimento: ${data.nascimento || '-'}
       `;
+    }
+
+    function parseBirthDate(value) {
+      const s = formatDateToInput(value || '').trim();
+      const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (!m) return null;
+
+      const day = Number(m[1]);
+      const month = Number(m[2]);
+      const year = Number(m[3]);
+
+      const date = new Date(year, month - 1, day);
+      if (
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day
+      ) {
+        return null;
+      }
+
+      return date;
+    }
+
+    function getAgePartsFromBirthDate(birthDate) {
+      if (!birthDate) return null;
+
+      const today = new Date();
+      const current = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const birth = new Date(birthDate.getFullYear(), birthDate.getMonth(), birthDate.getDate());
+
+      if (birth > current) return null;
+
+      let years = current.getFullYear() - birth.getFullYear();
+      let months = current.getMonth() - birth.getMonth();
+      let days = current.getDate() - birth.getDate();
+
+      if (days < 0) {
+        months -= 1;
+        const daysInPrevMonth = new Date(current.getFullYear(), current.getMonth(), 0).getDate();
+        days += daysInPrevMonth;
+      }
+
+      if (months < 0) {
+        years -= 1;
+        months += 12;
+      }
+
+      if (years < 0) return null;
+
+      return { years, months, days };
+    }
+
+    function getAgeLabel(value) {
+      const birthDate = parseBirthDate(value);
+      const parts = getAgePartsFromBirthDate(birthDate);
+      if (!parts) return '';
+
+      const anoTxt = parts.years === 1 ? 'ano' : 'anos';
+      const mesTxt = parts.months === 1 ? 'mês' : 'meses';
+      const diaTxt = parts.days === 1 ? 'dia' : 'dias';
+
+      return `${parts.years} ${anoTxt} ${parts.months} ${mesTxt} ${parts.days} ${diaTxt}`;
+    }
+
+    function updateAgeBadgeForInput(input, explicitValue) {
+      if (!input) return;
+
+      const host = input.parentElement;
+      if (!host) return;
+
+      const value = explicitValue != null ? explicitValue : input.value;
+      const birthDate = parseBirthDate(value);
+      const ageParts = getAgePartsFromBirthDate(birthDate);
+      const ageLabel = ageParts ? getAgeLabel(value) : '';
+
+      let badge = host.querySelector('.sb-age-badge');
+
+      if (!ageLabel) {
+        if (badge) badge.remove();
+
+        if (input.dataset.sbAgeOriginalPaddingRight != null) {
+          input.style.paddingRight = input.dataset.sbAgeOriginalPaddingRight;
+        }
+
+        if (host.dataset.sbAgeOriginalPaddingBottom != null) {
+          host.style.paddingBottom = host.dataset.sbAgeOriginalPaddingBottom;
+        }
+
+        return;
+      }
+
+      if (getComputedStyle(host).position === 'static') {
+        host.style.position = 'relative';
+      }
+
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'sb-age-badge';
+        host.appendChild(badge);
+      }
+
+      if (input.dataset.sbAgeOriginalPaddingRight == null) {
+        input.dataset.sbAgeOriginalPaddingRight = input.style.paddingRight || '';
+      }
+
+      if (host.dataset.sbAgeOriginalPaddingBottom == null) {
+        host.dataset.sbAgeOriginalPaddingBottom = host.style.paddingBottom || '';
+      }
+
+      input.style.paddingRight = input.dataset.sbAgeOriginalPaddingRight || '';
+      host.style.paddingBottom = '22px';
+      badge.textContent = ageLabel;
+
+      const under16 = ageParts && ageParts.years < 16;
+      badge.classList.toggle('sb-age-warning', !!under16);
+    }
+
+    function bindAgeBadge(input) {
+      if (!input || input.dataset.sbAgeBound === '1') return;
+      input.dataset.sbAgeBound = '1';
+
+      const refresh = () => setTimeout(() => updateAgeBadgeForInput(input), 0);
+
+      input.addEventListener('input', refresh);
+      input.addEventListener('change', refresh);
+      input.addEventListener('blur', refresh);
+
+      window.addEventListener('resize', () => updateAgeBadgeForInput(input), { passive: true });
+      refresh();
     }
 
     function handlePasteEvent(e, panel) {
@@ -1748,35 +2028,54 @@
       const { nomeInput, telefoneInput, emailInput, nascimentoInput, rgInput, cpfInput } =
         resolveFieldInputs(container);
 
-      const cpfFinal = data.cpf ? formatCPF(data.cpf) : '';
+      const cpfFinal = isValidCPF(data.cpf) ? formatCPF(data.cpf) : '';
       const rgFinal = data.rg ? String(data.rg).trim() : (cpfFinal || '');
       const telefoneFinal = data.telefone ? formatPhone(data.telefone) : formatPhone('0000000001');
 
       let filled = 0;
 
       if (nomeInput) {
-        if (data.nome) { if (await fillFieldWithFallback(nomeInput, data.nome)) filled++; }
-        else await hardClearField(nomeInput);
+        if (data.nome) {
+          if (await fillFieldWithFallback(nomeInput, data.nome)) filled++;
+        } else {
+          await hardClearField(nomeInput);
+        }
       }
 
       if (emailInput) {
-        if (data.email) { if (await fillEmailField(emailInput, data.email)) filled++; }
-        else await hardClearField(emailInput);
+        if (data.email) {
+          if (await fillEmailField(emailInput, data.email)) filled++;
+        } else {
+          await hardClearField(emailInput);
+        }
       }
 
       if (nascimentoInput) {
-        if (data.nascimento) { if (await fillFieldWithFallback(nascimentoInput, data.nascimento)) filled++; }
-        else await hardClearField(nascimentoInput);
+        bindAgeBadge(nascimentoInput);
+
+        if (data.nascimento) {
+          if (await fillFieldWithFallback(nascimentoInput, data.nascimento)) filled++;
+          updateAgeBadgeForInput(nascimentoInput, data.nascimento);
+        } else {
+          await hardClearField(nascimentoInput);
+          updateAgeBadgeForInput(nascimentoInput, '');
+        }
       }
 
       if (rgInput) {
-        if (rgFinal) { if (await fillFieldWithFallback(rgInput, rgFinal)) filled++; }
-        else await hardClearField(rgInput);
+        if (rgFinal) {
+          if (await fillFieldWithFallback(rgInput, rgFinal)) filled++;
+        } else {
+          await hardClearField(rgInput);
+        }
       }
 
       if (cpfInput) {
-        if (cpfFinal) { if (await fillFieldWithFallback(cpfInput, cpfFinal)) filled++; }
-        else await hardClearField(cpfInput);
+        if (cpfFinal) {
+          if (await fillFieldWithFallback(cpfInput, cpfFinal)) filled++;
+        } else {
+          await hardClearField(cpfInput);
+        }
       }
 
       if (telefoneInput && await fillPhoneField(telefoneInput, telefoneFinal)) filled++;
@@ -1938,6 +2237,12 @@
         if (!panel) {
           panel = createPanelElement(passengerId);
           container.appendChild(panel);
+        }
+
+        const existingInputs = resolveFieldInputs(container);
+        if (existingInputs.nascimentoInput) {
+          bindAgeBadge(existingInputs.nascimentoInput);
+          updateAgeBadgeForInput(existingInputs.nascimentoInput);
         }
       });
 
