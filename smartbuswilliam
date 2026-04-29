@@ -1,15 +1,17 @@
 // ==UserScript==
-// @name         Guanabara - DIRETAS V1.9
+// @name         Smartbus - Print de horarios
 // @namespace    http://tampermonkey.net/
-// @version      1.9
-// @author       William Rodrigues
+// @version      1.9.5
 // @match        *://*.smarttravelit.com/*
 // @grant        none
 // @run-at       document-start
 // ==/UserScript==
 
 // =========================================================================
-// SCRIPT 1: TABELA (VALORES INTEGRAIS + INVERSÃO DA VOLTA CLÁSSICA)
+// SCRIPT 1: TABELA
+// - Cabeçalho com origem/destino em autoaltura
+// - Pega sempre o MENOR valor disponível da linha
+// - Bloco verde de crédito REMOVIDO da imagem
 // =========================================================================
 (function() {
     'use strict';
@@ -29,7 +31,12 @@
         if (rect.width <= 0 || rect.height <= 0) return false;
 
         const st = window.getComputedStyle(el);
-        if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity || '1') === 0) {
+
+        if (
+            st.display === 'none' ||
+            st.visibility === 'hidden' ||
+            parseFloat(st.opacity || '1') === 0
+        ) {
             return false;
         }
 
@@ -42,28 +49,47 @@
 
         const style = document.createElement('style');
         style.id = 'william-style-copy-table';
+
         style.textContent = `
             #btn-copy-william {
-                position: fixed;
-                z-index: 999999;
+                position: fixed !important;
+                z-index: 999999 !important;
+
                 width: 150px !important;
+                min-width: 150px !important;
+                max-width: 150px !important;
+
                 height: 38px !important;
+                min-height: 38px !important;
+                max-height: 38px !important;
+
                 padding: 0 14px !important;
+                margin: 0 !important;
+
                 background: #303F9F;
                 color: #ffffff;
-                border: none;
-                border-radius: 2px;
+
+                border: none !important;
+                border-radius: 2px !important;
+
                 cursor: pointer;
                 font-weight: 700;
-                font-size: 14px;
-                line-height: 38px;
+                font-size: 14px !important;
+                line-height: 38px !important;
                 font-family: Arial, Helvetica, sans-serif;
+
                 text-transform: uppercase;
                 text-align: center;
                 white-space: nowrap;
-                box-sizing: border-box;
+
+                overflow: hidden;
+                box-sizing: border-box !important;
+
                 box-shadow: 0 4px 12px rgba(0,0,0,0.22);
-                transition: background-color 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
+                transition:
+                    background-color 0.18s ease,
+                    transform 0.12s ease,
+                    box-shadow 0.18s ease;
             }
 
             #btn-copy-william:hover {
@@ -78,6 +104,7 @@
                 box-shadow: 0 3px 8px rgba(0,0,0,0.18);
             }
         `;
+
         document.head.appendChild(style);
     }
 
@@ -88,15 +115,13 @@
             if (!elementoVisivel(el)) return false;
 
             const txt = normalizarTexto(el.innerText);
+
             if (!txt || !txt.includes('NOVA PESQUISA')) return false;
 
             const rect = el.getBoundingClientRect();
 
-            // botão fica na barra inferior
-            if (rect.top < window.innerHeight - 170) return false;
-
-            // evita containers muito grandes
-            if (rect.width > 260 || rect.height > 90) return false;
+            if (rect.top < window.innerHeight - 190) return false;
+            if (rect.width > 280 || rect.height > 95) return false;
 
             return true;
         });
@@ -107,12 +132,10 @@
             const ra = a.getBoundingClientRect();
             const rb = b.getBoundingClientRect();
 
-            // prioriza o que estiver mais à direita
             if (Math.abs(rb.right - ra.right) > 5) {
                 return rb.right - ra.right;
             }
 
-            // e depois o maior (para pegar o botão, não o span interno)
             return (rb.width * rb.height) - (ra.width * ra.height);
         });
 
@@ -129,8 +152,9 @@
             if (!txt) return false;
 
             const rect = el.getBoundingClientRect();
-            if (rect.top < window.innerHeight - 170) return false;
-            if (rect.width > 260 || rect.height > 90) return false;
+
+            if (rect.top < window.innerHeight - 190) return false;
+            if (rect.width > 280 || rect.height > 95) return false;
 
             return (
                 txt.includes('PASSAGEIROS') ||
@@ -145,7 +169,12 @@
         candidatos.sort((a, b) => {
             const ra = a.getBoundingClientRect();
             const rb = b.getBoundingClientRect();
-            return ra.left - rb.left;
+
+            if (Math.abs(rb.right - ra.right) > 5) {
+                return rb.right - ra.right;
+            }
+
+            return (rb.width * rb.height) - (ra.width * ra.height);
         });
 
         return candidatos[0];
@@ -155,6 +184,13 @@
         const larguraBtn = 150;
         const alturaBtn = 38;
         const espaco = 12;
+
+        btn.style.width = larguraBtn + 'px';
+        btn.style.height = alturaBtn + 'px';
+        btn.style.minWidth = larguraBtn + 'px';
+        btn.style.maxWidth = larguraBtn + 'px';
+        btn.style.minHeight = alturaBtn + 'px';
+        btn.style.maxHeight = alturaBtn + 'px';
 
         const alvoNovaPesquisa = encontrarBotaoNovaPesquisa();
 
@@ -171,8 +207,7 @@
             btn.style.top = Math.round(top) + 'px';
             btn.style.right = 'auto';
             btn.style.bottom = 'auto';
-            btn.style.width = larguraBtn + 'px';
-            btn.style.height = alturaBtn + 'px';
+
             return;
         }
 
@@ -191,32 +226,143 @@
             btn.style.top = Math.round(top) + 'px';
             btn.style.right = 'auto';
             btn.style.bottom = 'auto';
-            btn.style.width = larguraBtn + 'px';
-            btn.style.height = alturaBtn + 'px';
+
             return;
         }
 
-        // último fallback
         btn.style.left = '20px';
         btn.style.top = 'auto';
         btn.style.right = 'auto';
         btn.style.bottom = '18px';
-        btn.style.width = larguraBtn + 'px';
-        btn.style.height = alturaBtn + 'px';
+    }
+
+    function limparNomeCidade(txt) {
+        return (txt || '')
+            .replace(/\s+/g, ' ')
+            .replace(/\s*-\s*[A-Z]{2}$/i, '')
+            .replace(/^[A-Z]{3}\s*-\s*/i, '')
+            .trim();
+    }
+
+    function ajustarTextoNoLimite(ctx, texto, maxWidth, tamanhoInicial, tamanhoMinimo, peso = 'bold', familia = 'Arial') {
+        let tamanho = tamanhoInicial;
+        let txt = (texto || '').trim();
+
+        while (tamanho >= tamanhoMinimo) {
+            ctx.font = `${peso} ${tamanho}px ${familia}`;
+
+            if (ctx.measureText(txt).width <= maxWidth) {
+                return {
+                    texto: txt,
+                    tamanho
+                };
+            }
+
+            tamanho--;
+        }
+
+        ctx.font = `${peso} ${tamanhoMinimo}px ${familia}`;
+
+        if (ctx.measureText(txt).width <= maxWidth) {
+            return {
+                texto: txt,
+                tamanho: tamanhoMinimo
+            };
+        }
+
+        while (txt.length > 3 && ctx.measureText(txt + '...').width > maxWidth) {
+            txt = txt.slice(0, -1);
+        }
+
+        return {
+            texto: txt + '...',
+            tamanho: tamanhoMinimo
+        };
+    }
+
+    function quebrarTextoEmLinhas(ctx, texto, maxWidth, font) {
+        texto = (texto || '').trim();
+        ctx.font = font;
+
+        const palavras = texto.split(/\s+/);
+        const linhas = [];
+        let linhaAtual = '';
+
+        palavras.forEach(palavra => {
+            const teste = linhaAtual ? linhaAtual + ' ' + palavra : palavra;
+
+            if (ctx.measureText(teste).width <= maxWidth) {
+                linhaAtual = teste;
+            } else {
+                if (linhaAtual) linhas.push(linhaAtual);
+
+                if (ctx.measureText(palavra).width > maxWidth) {
+                    let pedaco = '';
+
+                    for (let char of palavra) {
+                        const testeChar = pedaco + char;
+
+                        if (ctx.measureText(testeChar).width <= maxWidth) {
+                            pedaco = testeChar;
+                        } else {
+                            if (pedaco) linhas.push(pedaco);
+                            pedaco = char;
+                        }
+                    }
+
+                    linhaAtual = pedaco;
+                } else {
+                    linhaAtual = palavra;
+                }
+            }
+        });
+
+        if (linhaAtual) linhas.push(linhaAtual);
+
+        return linhas;
+    }
+
+    function desenharTextoMultilinha(ctx, linhas, x, y, alturaLinha) {
+        linhas.forEach((linha, index) => {
+            ctx.fillText(linha, x, y + (index * alturaLinha));
+        });
+    }
+
+    function desenharCartao(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+        ctx.fill();
     }
 
     try {
         const nav = performance.getEntriesByType("navigation")[0];
+
         if (nav && nav.type === "reload") {
             limparTudo();
         }
     } catch (e) {}
 
     let linkAtual = window.location.hash;
+
     setInterval(() => {
         if (window.location.hash !== linkAtual) {
             linkAtual = window.location.hash;
-            if (linkAtual === '#/' || linkAtual === '#/home' || linkAtual === '#/dashboard' || linkAtual === '') {
+
+            if (
+                linkAtual === '#/' ||
+                linkAtual === '#/home' ||
+                linkAtual === '#/dashboard' ||
+                linkAtual === ''
+            ) {
                 limparTudo();
             }
         }
@@ -231,13 +377,13 @@
         return valor ? parseFloat(valor) : 0;
     }
 
-    function formatarMoeda(valor) {
-        return "R$ " + valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-    }
-
     function extrairNumero(texto) {
         if (!texto) return 0;
-        let limpo = texto.replace(/[^\d,]/g, '').replace(',', '.');
+
+        let limpo = texto
+            .replace(/[^\d,]/g, '')
+            .replace(',', '.');
+
         return parseFloat(limpo) || 0;
     }
 
@@ -253,6 +399,7 @@
 
                 if (valorNum > 0) {
                     setCredito(valorNum);
+
                     td.style.backgroundColor = "#d4edda";
                     td.style.border = "3px solid #28a745";
                     td.dataset.marcado = "true";
@@ -261,7 +408,7 @@
         }
     }
 
-    function capturarTrecho() {
+    function capturarTrechoDetalhado() {
         let origem = document.querySelector('#txt-origem')?.value || "";
         let destino = document.querySelector('#txt-destino')?.value || "";
 
@@ -282,7 +429,11 @@
         for (let i = 0; i < abasAtivas.length; i++) {
             let txtAba = abasAtivas[i].innerText.toUpperCase();
 
-            if (txtAba.includes('VOLTA') && !txtAba.includes('IDA E VOLTA') && !txtAba.includes('IDA E RETORNO')) {
+            if (
+                txtAba.includes('VOLTA') &&
+                !txtAba.includes('IDA E VOLTA') &&
+                !txtAba.includes('IDA E RETORNO')
+            ) {
                 isVolta = true;
                 break;
             }
@@ -296,33 +447,28 @@
             isVolta = true;
         }
 
-        if (origem && destino) {
-            origem = origem.replace(/\s*-\s*[A-Z]{2}$/i, '').replace(/^[A-Z]{3}\s*-\s*/i, '').trim();
-            destino = destino.replace(/\s*-\s*[A-Z]{2}$/i, '').replace(/^[A-Z]{3}\s*-\s*/i, '').trim();
+        origem = limparNomeCidade(origem);
+        destino = limparNomeCidade(destino);
 
+        if (origem && destino) {
             if (isVolta) {
-                return `${destino} ➔ ${origem}`.toUpperCase();
-            } else {
-                return `${origem} ➔ ${destino}`.toUpperCase();
+                const tmp = origem;
+                origem = destino;
+                destino = tmp;
             }
+
+            return {
+                origem: origem.toUpperCase(),
+                destino: destino.toUpperCase(),
+                texto: `${origem} ➔ ${destino}`.toUpperCase()
+            };
         }
 
-        return "";
-    }
-
-    function desenharCartao(ctx, x, y, width, height, radius) {
-        ctx.beginPath();
-        ctx.moveTo(x + radius, y);
-        ctx.lineTo(x + width - radius, y);
-        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-        ctx.lineTo(x + width, y + height - radius);
-        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-        ctx.lineTo(x + radius, y + height);
-        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-        ctx.lineTo(x, y + radius);
-        ctx.quadraticCurveTo(x, y, x + radius, y);
-        ctx.closePath();
-        ctx.fill();
+        return {
+            origem: "",
+            destino: "",
+            texto: ""
+        };
     }
 
     async function desenharECopiarImagem(dados) {
@@ -334,10 +480,48 @@
         const alturaCartao = 95;
         const espacoEntreCartoes = 15;
 
-        let altura = 130;
+        const temTrechoDetalhado = !!(
+            dados.trechoInfo &&
+            dados.trechoInfo.origem &&
+            dados.trechoInfo.destino
+        );
 
-        if (dados.credito > 0) altura += 120;
+        const boxW = 315;
+        const conteudoMax = boxW - 28;
+        const fonteTrecho = 'bold 28px Arial';
+        const alturaLinhaTrecho = 20;
 
+        let origemLinhas = [];
+        let destinoLinhas = [];
+        let alturaBoxTrecho = 60;
+        let alturaCabecalho = 100;
+
+        if (temTrechoDetalhado) {
+            origemLinhas = quebrarTextoEmLinhas(
+                ctx,
+                dados.trechoInfo.origem,
+                conteudoMax,
+                fonteTrecho
+            );
+
+            destinoLinhas = quebrarTextoEmLinhas(
+                ctx,
+                dados.trechoInfo.destino,
+                conteudoMax,
+                fonteTrecho
+            );
+
+            const maiorQtdLinhas = Math.max(origemLinhas.length, destinoLinhas.length);
+
+            alturaBoxTrecho = Math.max(
+                60,
+                30 + (maiorQtdLinhas * alturaLinhaTrecho) + 12
+            );
+
+            alturaCabecalho = 55 + alturaBoxTrecho + 25;
+        }
+
+        let altura = alturaCabecalho + 40;
         altura += (dados.viagens.length * (alturaCartao + espacoEntreCartoes)) + 30;
 
         canvas.width = largura;
@@ -347,44 +531,96 @@
         ctx.fillRect(0, 0, largura, altura);
 
         ctx.fillStyle = '#303F9F';
-        ctx.fillRect(0, 0, largura, 90);
+        ctx.fillRect(0, 0, largura, alturaCabecalho);
 
         ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 26px Arial';
+        ctx.fillText(`${dados.isRemarcacao ? 'REMARCAÇÃO' : 'VIAGEM'}`, margem, 34);
 
-        const trechoFormatado = dados.trecho ? `${dados.trecho} | ` : "";
-        const textoCabecalho = `📅 ${dados.isRemarcacao ? 'REMARCAÇÃO' : 'VIAGEM'}: ${trechoFormatado}${dados.dataTexto}`;
+        ctx.textAlign = 'right';
 
-        let fontCabecalho = 24;
-        ctx.font = `bold ${fontCabecalho}px Arial`;
+        const dataHeader = ajustarTextoNoLimite(
+            ctx,
+            dados.dataTexto || 'DATA',
+            300,
+            18,
+            14,
+            'bold',
+            'Arial'
+        );
 
-        while (ctx.measureText(textoCabecalho).width > largura - (margem * 2) && fontCabecalho > 16) {
-            fontCabecalho--;
-            ctx.font = `bold ${fontCabecalho}px Arial`;
+        ctx.font = `bold ${dataHeader.tamanho}px Arial`;
+        ctx.fillText(dataHeader.texto, largura - margem, 34);
+
+        ctx.textAlign = 'left';
+
+        if (temTrechoDetalhado) {
+            const boxY = 55;
+            const box1X = margem;
+            const box2X = largura - margem - boxW;
+            const arrowX = largura / 2;
+
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            desenharCartao(ctx, box1X, boxY, boxW, alturaBoxTrecho, 10);
+
+            ctx.fillStyle = 'rgba(255,255,255,0.82)';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('ORIGEM', box1X + 14, boxY + 18);
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = fonteTrecho;
+            desenharTextoMultilinha(
+                ctx,
+                origemLinhas,
+                box1X + 14,
+                boxY + 43,
+                alturaLinhaTrecho
+            );
+
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            desenharCartao(ctx, box2X, boxY, boxW, alturaBoxTrecho, 10);
+
+            ctx.fillStyle = 'rgba(255,255,255,0.82)';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('DESTINO', box2X + 14, boxY + 18);
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = fonteTrecho;
+            desenharTextoMultilinha(
+                ctx,
+                destinoLinhas,
+                box2X + 14,
+                boxY + 43,
+                alturaLinhaTrecho
+            );
+
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 34px Arial';
+            ctx.fillText('➜', arrowX, boxY + (alturaBoxTrecho / 2) + 11);
+            ctx.textAlign = 'left';
+        } else {
+            const trechoTexto = dados.trechoInfo?.texto || '';
+
+            if (trechoTexto) {
+                const trechoAjustado = ajustarTextoNoLimite(
+                    ctx,
+                    trechoTexto,
+                    largura - (margem * 2),
+                    22,
+                    14,
+                    'bold',
+                    'Arial'
+                );
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = `bold ${trechoAjustado.tamanho}px Arial`;
+                ctx.fillText(trechoAjustado.texto, margem, 76);
+            }
         }
 
-        ctx.fillText(textoCabecalho, margem, 55);
-
-        let yAtual = 120;
-
-        if (dados.credito > 0) {
-            ctx.fillStyle = '#E8F5E9';
-            desenharCartao(ctx, margem, yAtual - 10, largura - (margem * 2), 105, 8);
-
-            ctx.strokeStyle = '#C8E6C9';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-
-            ctx.fillStyle = '#2E7D32';
-            ctx.font = 'bold 20px Arial';
-            ctx.fillText(`💰 Crédito aplicado: ${formatarMoeda(dados.credito)}`, margem + 20, yAtual + 20);
-
-            ctx.fillStyle = '#555555';
-            ctx.font = '16px Arial';
-            ctx.fillText('ℹ️ Atenção: passagens adquiridas por outros portais haverá a cobrança da taxa de conveniência.', margem + 20, yAtual + 48);
-            ctx.fillText('ℹ️ Atenção: Valores com seguro adicionado. Caso não deseje, haverá redução entre R$ 6,00 a R$16,00.', margem + 20, yAtual + 72);
-
-            yAtual += 120;
-        }
+        let yAtual = alturaCabecalho + 20;
 
         dados.viagens.forEach((v) => {
             ctx.shadowColor = 'rgba(0,0,0,0.08)';
@@ -434,11 +670,11 @@
                 ctx.font = '14px Arial';
                 ctx.fillText(prefixo, largura - margem - 25, yAtual + 40);
 
-                ctx.fillStyle = '#E65100';
+                ctx.fillStyle = '#00BD07';
                 ctx.font = 'bold 26px Arial';
                 ctx.fillText(valorEmDestaque, largura - margem - 25, yAtual + 70);
             } else {
-                ctx.fillStyle = '#E65100';
+                ctx.fillStyle = '#00BD07';
                 ctx.font = 'bold 24px Arial';
                 ctx.fillText(valorEmDestaque, largura - margem - 25, yAtual + 55);
             }
@@ -450,7 +686,10 @@
 
         canvas.toBlob(async function(blob) {
             try {
-                const item = new ClipboardItem({ "image/png": blob });
+                const item = new ClipboardItem({
+                    "image/png": blob
+                });
+
                 await navigator.clipboard.write([item]);
 
                 limparTudo();
@@ -476,12 +715,18 @@
     function extrairDados() {
         const credito = getCredito();
 
-        const elementoData = document.querySelector('.service-date-title, #txt-data-ida-retorno, .active .date-value');
+        const elementoData = document.querySelector(
+            '.service-date-title, #txt-data-ida-retorno, .active .date-value'
+        );
 
         let dataTexto = elementoData ? elementoData.innerText.trim().toUpperCase() : "DATA";
-        dataTexto = dataTexto.replace('EM ', '').replace('COPIAR', '').trim();
 
-        const trecho = capturarTrecho();
+        dataTexto = dataTexto
+            .replace('EM ', '')
+            .replace('COPIAR', '')
+            .trim();
+
+        const trechoInfo = capturarTrechoDetalhado();
 
         const blocosHorario = document.querySelectorAll('.service-col-3');
 
@@ -501,28 +746,48 @@
 
             const servico = linha.querySelector('.spn-class')?.innerText.trim() || "CONVENCIONAL";
 
-            const poltTxt = linha.querySelector('.service-availability, [class*="availability"]')?.innerText.replace(/[^0-9]/g, '') || "0";
+            const poltTxt = linha
+                .querySelector('.service-availability, [class*="availability"]')
+                ?.innerText
+                .replace(/[^0-9]/g, '') || "0";
+
             const polt = parseInt(poltTxt);
 
             if (polt <= 0) return;
 
-            let valorNovo = 0;
+            let valoresEncontrados = [];
 
-            const celulas = linha.querySelectorAll('td, .price-family-container, .service-price-family');
+            const celulas = linha.querySelectorAll(
+                'td, .price-family-container, .service-price-family'
+            );
 
             for (let c of celulas) {
                 let txt = c.innerText.toUpperCase();
 
-                if ((txt.includes('BRL') || txt.includes('R$')) && !txt.includes('INDISPONÍVEL') && !txt.includes('ESGOTADO')) {
-                    valorNovo = extrairNumero(txt);
+                if (
+                    (txt.includes('BRL') || txt.includes('R$')) &&
+                    !txt.includes('INDISPONÍVEL') &&
+                    !txt.includes('ESGOTADO')
+                ) {
+                    const valoresNoTexto = txt.match(/(?:BRL|R\$)\s*\d{1,3}(?:\.\d{3})*,\d{2}/g) || [];
 
-                    if (valorNovo > 0) break;
+                    valoresNoTexto.forEach(valorTexto => {
+                        const valorNum = extrairNumero(valorTexto);
+
+                        if (valorNum > 0) {
+                            valoresEncontrados.push(valorNum);
+                        }
+                    });
                 }
             }
 
-            if (valorNovo === 0) return;
+            if (valoresEncontrados.length === 0) return;
 
-            let displayValor = "A partir de R$ " + valorNovo.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            let valorNovo = Math.min(...valoresEncontrados);
+
+            let displayValor = "R$ " + valorNovo.toLocaleString('pt-BR', {
+                minimumFractionDigits: 2
+            });
 
             const textoPoltronas = polt === 1 ? "1 vaga" : `${polt} vagas`;
 
@@ -540,7 +805,7 @@
                 isRemarcacao: credito > 0,
                 credito,
                 dataTexto,
-                trecho,
+                trechoInfo,
                 viagens
             });
         } else {
@@ -559,7 +824,9 @@
                 btn = document.createElement('button');
                 btn.id = 'btn-copy-william';
                 btn.innerHTML = 'COPIAR TABELA';
+
                 document.body.appendChild(btn);
+
                 btn.onclick = extrairDados;
             }
 
@@ -572,6 +839,7 @@
 
     window.addEventListener('resize', () => {
         const btn = document.getElementById('btn-copy-william');
+
         if (btn && btn.style.display !== 'none') {
             posicionarBotaoTabela(btn);
         }
@@ -620,6 +888,7 @@
 
     function desenharRetanguloArredondado(ctx, x, y, width, height, radius, fillStyle) {
         ctx.fillStyle = fillStyle;
+
         ctx.beginPath();
         ctx.moveTo(x + radius, y);
         ctx.lineTo(x + width - radius, y);
@@ -655,8 +924,17 @@
             }
 
             if (origem && destino) {
-                origem = origem.replace(/\s*-\s*[A-Z]{2}$/i, '').replace(/^[A-Z]{3}\s*-\s*/i, '').trim().toUpperCase();
-                destino = destino.replace(/\s*-\s*[A-Z]{2}$/i, '').replace(/^[A-Z]{3}\s*-\s*/i, '').trim().toUpperCase();
+                origem = origem
+                    .replace(/\s*-\s*[A-Z]{2}$/i, '')
+                    .replace(/^[A-Z]{3}\s*-\s*/i, '')
+                    .trim()
+                    .toUpperCase();
+
+                destino = destino
+                    .replace(/\s*-\s*[A-Z]{2}$/i, '')
+                    .replace(/^[A-Z]{3}\s*-\s*/i, '')
+                    .trim()
+                    .toUpperCase();
 
                 if (origem.length > 2 && destino.length > 2) {
                     sessionStorage.setItem("william_cidades_longas", JSON.stringify({
@@ -694,13 +972,17 @@
             reserva.horario = `${mHora[1]} às ${mHora[2]}`;
         }
 
-        let mNome = textoAchatado.match(/#\d+\s+([A-ZÀ-ÖØ-öø-ÿ\s]+?)\s+(?:NORMAL|PASSE LIVRE|IDOSO|ESTUDANTE|BPE|ID JOVEM|CRIANÇA|GRATUIDADE|CORTESIA|RG|CPF|BRL|R\$)/);
+        let mNome = textoAchatado.match(
+            /#\d+\s+([A-ZÀ-ÖØ-öø-ÿ\s]+?)\s+(?:NORMAL|PASSE LIVRE|IDOSO|ESTUDANTE|BPE|ID JOVEM|CRIANÇA|GRATUIDADE|CORTESIA|RG|CPF|BRL|R\$)/
+        );
 
         if (mNome) {
             reserva.passageiro = mNome[1].trim();
         }
 
-        let mTrecho = textoAchatado.match(/\b([A-Z]{2,12})\b\s*(?:->|➔|→|>)?\s*\b([A-Z]{2,12})\b\s*\(([^()]{2,20})\)\s*(\d{1,3})\b/);
+        let mTrecho = textoAchatado.match(
+            /\b([A-Z]{2,12})\b\s*(?:->|➔|→|>)?\s*\b([A-Z]{2,12})\b\s*\(([^()]{2,20})\)\s*(\d{1,3})\b/
+        );
 
         if (mTrecho) {
             reserva.origem = mTrecho[1];
@@ -708,7 +990,9 @@
             reserva.servico = mTrecho[3].replace(/[^A-Z]/g, '');
             reserva.poltrona = mTrecho[4];
         } else {
-            let mTrechoIsolado = textoAchatado.match(/\b([A-Z]{2,12})\b\s*(?:->|➔|→|>)?\s*\b([A-Z]{2,12})\b\s*\(([^()]{2,20})\)/);
+            let mTrechoIsolado = textoAchatado.match(
+                /\b([A-Z]{2,12})\b\s*(?:->|➔|→|>)?\s*\b([A-Z]{2,12})\b\s*\(([^()]{2,20})\)/
+            );
 
             if (mTrechoIsolado) {
                 reserva.origem = mTrechoIsolado[1];
@@ -784,7 +1068,15 @@
         ctx.shadowBlur = 8;
         ctx.shadowOffsetY = 3;
 
-        desenharRetanguloArredondado(ctx, margem, yAtual, largura - (margem * 2), 65, 8, '#FFF3F3');
+        desenharRetanguloArredondado(
+            ctx,
+            margem,
+            yAtual,
+            largura - (margem * 2),
+            65,
+            8,
+            '#FFF3F3'
+        );
 
         ctx.shadowColor = 'transparent';
 
@@ -795,7 +1087,7 @@
         ctx.fillStyle = '#B71C1C';
         ctx.textAlign = 'center';
         ctx.font = 'bold 15px Arial';
-        ctx.fillText("⚠️ PRÉVIA SEM VALIDADE PARA EMBARQUE: Verifique os dados acima.", largura / 2, yAtual + 28);
+        ctx.fillText("Verifique os dados abaixo.", largura / 2, yAtual + 28);
 
         ctx.font = 'bold 14px Arial';
         ctx.fillText("O bilhete final será gerado somente após a sua confirmação.", largura / 2, yAtual + 48);
@@ -806,10 +1098,17 @@
         ctx.shadowBlur = 8;
         ctx.shadowOffsetY = 3;
 
-        desenharRetanguloArredondado(ctx, margem, yAtual, largura - (margem * 2), 140, 10, '#FFFFFF');
+        desenharRetanguloArredondado(
+            ctx,
+            margem,
+            yAtual,
+            largura - (margem * 2),
+            140,
+            10,
+            '#FFFFFF'
+        );
 
         ctx.shadowColor = 'transparent';
-
         ctx.textAlign = 'left';
 
         ctx.fillStyle = '#757575';
@@ -819,7 +1118,9 @@
         ctx.fillStyle = '#212121';
         ctx.font = 'bold 22px Arial';
 
-        let nomeVisual = reserva.passageiro.length > 45 ? reserva.passageiro.substring(0, 45) + "..." : reserva.passageiro;
+        let nomeVisual = reserva.passageiro.length > 45
+            ? reserva.passageiro.substring(0, 45) + "..."
+            : reserva.passageiro;
 
         ctx.fillText(nomeVisual, margem + 25, yAtual + 55);
 
@@ -852,7 +1153,15 @@
         ctx.shadowBlur = 8;
         ctx.shadowOffsetY = 3;
 
-        desenharRetanguloArredondado(ctx, margem, yAtual, largura - (margem * 2), 100, 10, '#FFFFFF');
+        desenharRetanguloArredondado(
+            ctx,
+            margem,
+            yAtual,
+            largura - (margem * 2),
+            100,
+            10,
+            '#FFFFFF'
+        );
 
         ctx.shadowColor = 'transparent';
 
@@ -875,13 +1184,19 @@
         ctx.font = 'bold 22px Arial';
         ctx.fillText(`⏱️ ${reserva.horario}`, margem + 260, yAtual + 70);
 
-        ctx.fillStyle = '#E8F5E9';
-
         let boxPW = 140;
         let boxPX = largura - margem - boxPW - 20;
         let boxPY = yAtual + 15;
 
-        desenharRetanguloArredondado(ctx, boxPX, boxPY, boxPW, 70, 8, '#E8F5E9');
+        desenharRetanguloArredondado(
+            ctx,
+            boxPX,
+            boxPY,
+            boxPW,
+            70,
+            8,
+            '#E8F5E9'
+        );
 
         ctx.textAlign = 'center';
 
@@ -896,18 +1211,21 @@
 
         canvas.toBlob(async function(blob) {
             try {
-                const item = new ClipboardItem({ "image/png": blob });
+                const item = new ClipboardItem({
+                    "image/png": blob
+                });
+
                 await navigator.clipboard.write([item]);
 
                 const btn = document.getElementById('btn-bilhete-william');
 
                 if (btn) {
                     btn.style.background = "#28a745";
-                    btn.innerHTML = `✅ Bilhete Premium Copiado!`;
+                    btn.innerHTML = `✅ Prévia Copiada`;
 
                     setTimeout(() => {
                         btn.style.background = "#303F9F";
-                        btn.innerHTML = "📸 Gerar Prévia de Remarcação";
+                        btn.innerHTML = "Gerar Prévia de Remarcação";
                     }, 3000);
                 }
             } catch (err) {
@@ -938,7 +1256,10 @@
             }
 
             function onMouseMove(e) {
-                if (Math.abs(e.clientX - dragStartX) > 3 || Math.abs(e.clientY - dragStartY) > 3) {
+                if (
+                    Math.abs(e.clientX - dragStartX) > 3 ||
+                    Math.abs(e.clientY - dragStartY) > 3
+                ) {
                     isDragging = true;
                     moveAt(e.clientX, e.clientY);
                 }
@@ -976,8 +1297,24 @@
             if (!btn) {
                 btn = document.createElement('button');
                 btn.id = 'btn-bilhete-william';
-                btn.innerHTML = '📸 Gerar Prévia de Remarcação';
-                btn.style = "position:fixed; bottom:17px; right:600px; z-index:999999; padding:5px 8px; background:#303F9F; color:white; border:3px solid #303F9F; border-radius:0px; cursor:pointer; font-weight:bold; box-shadow:0 4px 15px rgba(0,0,0,0.3); font-size:16px;";
+                btn.innerHTML = 'Gerar Prévia de Remarcação';
+
+                btn.style = `
+                    position: fixed;
+                    bottom: 17px;
+                    right: 600px;
+                    z-index: 999999;
+                    padding: 5px 8px;
+                    background: #303F9F;
+                    color: white;
+                    border: 3px solid #303F9F;
+                    border-radius: 0px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                    font-size: 16px;
+                `;
+
                 document.body.appendChild(btn);
                 adicionarDrag(btn);
             }
