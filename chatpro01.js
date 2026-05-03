@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatPro01
 // @namespace    https://chatpro.copy.direct
-// @version      1.2.0
-// @description  Copiar mensagens por clique/seleção + botão no header para copiar telefone (sem bloquear imagens/cards)
+// @version      1.2.2
+// @description  Copiar mensagens por clique/seleção + botão no header para copiar telefone, sem bloquear áudio/imagens/cards
 // @author       GILVAN
 // @match        https://app.chatpro.com.br/chat*
 // @grant        GM_addStyle
@@ -32,7 +32,7 @@
     }
 
     #chatpro-copy-phone {
-      margin-left: 12px;
+      margin-right: 12px;
       padding: 6px 10px;
       border-radius: 8px;
       border: none;
@@ -40,6 +40,12 @@
       color: #fff;
       font-size: 13px;
       cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    #chatpro-copy-phone:hover {
+      filter: brightness(1.05);
     }
   `);
 
@@ -52,10 +58,69 @@
 
   function copiarTexto(texto, el) {
     if (!texto) return;
+
     navigator.clipboard.writeText(texto).then(() => {
       el?.classList.add('chatpro-copiado');
       setTimeout(() => el?.classList.remove('chatpro-copiado'), 500);
     });
+  }
+
+  function clicouEmElementoNativo(target) {
+    if (!target) return false;
+
+    return !!target.closest(`
+      img,
+      video,
+      audio,
+      canvas,
+      svg,
+      a,
+      button,
+      input,
+      textarea,
+      select,
+      label,
+      [role="button"],
+      [role="slider"],
+      [role="menu"],
+      [role="menuitem"],
+      [contenteditable="true"],
+      .audio,
+      .audio-message,
+      .voice,
+      .voice-message,
+      .player,
+      .audio-player,
+      .react-audio-player,
+      .plyr,
+      .wavesurfer,
+      .speed,
+      .speed-control,
+      .playback-rate,
+      .media,
+      .media-message,
+      .message-audio,
+      .message-voice,
+      .chat-audio,
+      .chatpro-audio-ignore
+    `);
+  }
+
+  function mensagemTemAudio(msg) {
+    if (!msg) return false;
+
+    const texto = (msg.innerText || '').toLowerCase();
+
+    return !!(
+      msg.querySelector('audio') ||
+      msg.querySelector('video') ||
+      msg.querySelector('[role="slider"]') ||
+      msg.querySelector('button') ||
+      msg.querySelector('svg') ||
+      texto.includes('1x') ||
+      texto.includes('0:') ||
+      texto.includes('/ 0:')
+    );
   }
 
   function prepararMensagem(msg) {
@@ -64,21 +129,24 @@
     msg.classList.add('chatpro-msg');
 
     msg.addEventListener('click', e => {
+      // NÃO interfere em áudio, botão, imagem, card, link, velocidade, play etc.
+      if (clicouEmElementoNativo(e.target)) {
+        return;
+      }
 
-      // 🔴 NÃO INTERFERIR EM ELEMENTOS NATIVOS
-      if (
-        e.target.closest('img') ||
-        e.target.closest('a') ||
-        e.target.closest('button') ||
-        e.target.closest('[role="button"]')
-      ) {
-        return; // deixa o ChatPro agir
+      // Se a mensagem for áudio e o clique não for claramente em texto, não copia.
+      if (mensagemTemAudio(msg)) {
+        const selAudio = window.getSelection();
+        const txtSelAudio = selAudio?.toString().trim();
+
+        if (!txtSelAudio) {
+          return;
+        }
       }
 
       const sel = window.getSelection();
       const txtSel = sel?.toString().trim();
 
-      // ✔ Copiar apenas quando for TEXTO
       if (txtSel && msg.contains(sel.anchorNode)) {
         e.stopPropagation();
         copiarTexto(txtSel, msg);
@@ -108,36 +176,113 @@
      ========================================================= */
 
   function limparTelefone(t) {
-    return t.replace(/\D+/g, '').replace(/^55/, '');
+    return (t || '').replace(/\D+/g, '').replace(/^55/, '');
   }
 
   function obterTelefoneDireto() {
     const h2s = [...document.querySelectorAll('h2')];
-    return h2s.find(h => /^\+?\d[\d\s()-]{8,}$/.test(h.innerText));
+    return h2s.find(h => /^\+?\d[\d\s()-]{8,}$/.test((h.innerText || '').trim()));
+  }
+
+  function elementoVisivel(el) {
+    if (!el || !el.isConnected) return false;
+
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+
+    const st = getComputedStyle(el);
+    if (
+      st.display === 'none' ||
+      st.visibility === 'hidden' ||
+      parseFloat(st.opacity || '1') === 0
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function normalizarTexto(txt) {
+    return (txt || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function encontrarBotaoTransferir(header) {
+    if (!header) return null;
+
+    const candidatos = [
+      ...header.querySelectorAll('button, a, [role="button"], span, div')
+    ];
+
+    return candidatos.find(el => {
+      if (!elementoVisivel(el)) return false;
+      const txt = normalizarTexto(el.innerText);
+      return txt === 'transferir' || txt.includes('transferir');
+    }) || null;
+  }
+
+  function encontrarFilhoDireto(container, el) {
+    if (!container || !el) return null;
+
+    let atual = el;
+
+    while (atual && atual.parentElement && atual.parentElement !== container) {
+      atual = atual.parentElement;
+    }
+
+    if (atual && atual.parentElement === container) {
+      return atual;
+    }
+
+    return null;
   }
 
   function criarBotaoHeader() {
     const header = document.querySelector('header.chat-messages-header');
     if (!header) return;
 
-    if (header.querySelector('#chatpro-copy-phone')) return;
+    let btn = document.getElementById('chatpro-copy-phone');
 
-    const btn = document.createElement('button');
-    btn.id = 'chatpro-copy-phone';
-    btn.innerText = '📞 Copiar';
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'chatpro-copy-phone';
+      btn.innerText = '📞 Copiar';
 
-    btn.onclick = async () => {
-      const telEl = obterTelefoneDireto();
-      if (!telEl) return alert('Telefone não encontrado');
+      btn.onclick = async (e) => {
+        e.stopPropagation();
 
-      const tel = limparTelefone(telEl.innerText);
-      await navigator.clipboard.writeText(tel);
+        const telEl = obterTelefoneDireto();
+        if (!telEl) {
+          alert('Telefone não encontrado');
+          return;
+        }
 
-      btn.innerText = '✅ Copiado';
-      setTimeout(() => (btn.innerText = '📞 Copiar'), 1500);
-    };
+        const tel = limparTelefone(telEl.innerText);
+        if (!tel) {
+          alert('Telefone não encontrado');
+          return;
+        }
 
-    header.appendChild(btn);
+        await navigator.clipboard.writeText(tel);
+
+        btn.innerText = '✅ Copiado';
+        setTimeout(() => {
+          btn.innerText = '📞 Copiar';
+        }, 1500);
+      };
+    }
+
+    const transferir = encontrarBotaoTransferir(header);
+    const ancora = encontrarFilhoDireto(header, transferir);
+
+    if (ancora) {
+      if (btn.parentElement !== header || btn.nextSibling !== ancora) {
+        header.insertBefore(btn, ancora);
+      }
+    } else {
+      if (btn.parentElement !== header) {
+        header.appendChild(btn);
+      }
+    }
   }
 
   /* =========================================================
