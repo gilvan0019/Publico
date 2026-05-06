@@ -1,19 +1,13 @@
 // ==UserScript==
 // @name         Smartbus - Print de horarios
 // @namespace    http://tampermonkey.net/
-// @version      1.9.6
+// @version      1.9.8
 // @match        *://*.smarttravelit.com/*
 // @grant        none
 // @run-at       document-start
 // ==/UserScript==
 
-// =========================================================================
-// SCRIPT 1: TABELA
-// - Cabeçalho com origem/destino em autoaltura
-// - Pega sempre o MENOR valor disponível da linha
-// - Botão COPIAR TABELA dentro do footer da página
-// - Bloco verde de crédito REMOVIDO da imagem
-// =========================================================================
+
 (function() {
     'use strict';
 
@@ -52,22 +46,26 @@
         style.id = 'william-style-copy-table';
 
         style.textContent = `
-            #btn-copy-william {
+            #william-copy-buttons-wrap {
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                margin: 0 8px !important;
+                vertical-align: middle !important;
+                flex-wrap: wrap !important;
+            }
+
+            .william-copy-btn {
                 position: relative !important;
                 z-index: 10 !important;
-
-                width: 150px !important;
-                min-width: 150px !important;
-                max-width: 150px !important;
 
                 height: 38px !important;
                 min-height: 38px !important;
                 max-height: 38px !important;
 
-                padding: 0 14px !important;
-                margin: 0 8px !important;
+                padding: 0 10px !important;
+                margin: 0 !important;
 
-                background: #303F9F !important;
                 color: #ffffff !important;
 
                 border: none !important;
@@ -75,7 +73,7 @@
 
                 cursor: pointer !important;
                 font-weight: 700 !important;
-                font-size: 14px !important;
+                font-size: 12px !important;
                 line-height: 38px !important;
                 font-family: Arial, Helvetica, sans-serif !important;
 
@@ -93,6 +91,13 @@
                     box-shadow 0.18s ease;
             }
 
+            #btn-copy-william {
+                width: 118px !important;
+                min-width: 118px !important;
+                max-width: 118px !important;
+                background: #303F9F !important;
+            }
+
             #btn-copy-william:hover {
                 background: #26358f !important;
                 box-shadow: 0 6px 16px rgba(0,0,0,0.26) !important;
@@ -101,6 +106,25 @@
 
             #btn-copy-william:active {
                 background: #1f2d7a !important;
+                transform: translateY(0);
+                box-shadow: 0 3px 8px rgba(0,0,0,0.18) !important;
+            }
+
+            #btn-copy-william-esgotados {
+                width: 126px !important;
+                min-width: 126px !important;
+                max-width: 126px !important;
+                background: #5f6368 !important;
+            }
+
+            #btn-copy-william-esgotados:hover {
+                background: #4e5257 !important;
+                box-shadow: 0 6px 16px rgba(0,0,0,0.26) !important;
+                transform: translateY(-1px);
+            }
+
+            #btn-copy-william-esgotados:active {
+                background: #43474b !important;
                 transform: translateY(0);
                 box-shadow: 0 3px 8px rgba(0,0,0,0.18) !important;
             }
@@ -126,6 +150,22 @@
             const txt = normalizarTexto(el.innerText);
             return txt.includes('NOVA PESQUISA');
         });
+    }
+
+    function encontrarFilhoDiretoDoFooter(footer, el) {
+        if (!footer || !el) return null;
+
+        let atual = el;
+
+        while (atual && atual.parentElement && atual.parentElement !== footer) {
+            atual = atual.parentElement;
+        }
+
+        if (atual && atual.parentElement === footer) {
+            return atual;
+        }
+
+        return null;
     }
 
     function limparNomeCidade(txt) {
@@ -363,7 +403,7 @@
         };
     }
 
-    async function desenharECopiarImagem(dados) {
+    async function desenharECopiarImagem(dados, botaoId) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
@@ -539,36 +579,42 @@
             ctx.font = 'bold 18px Arial';
             ctx.fillText(v.servico, margem + 175, yAtual + 40);
 
-            ctx.fillStyle = '#616161';
+            ctx.fillStyle = v.esgotado ? '#D84315' : '#616161';
             ctx.font = '16px Arial';
-            ctx.fillText(`💺 ${v.textoPoltronas}`, margem + 175, yAtual + 65);
+            ctx.fillText(v.infoLinha, margem + 175, yAtual + 65);
 
             ctx.fillStyle = '#E0E0E0';
             ctx.fillRect(largura - margem - 300, yAtual + 20, 2, 55);
 
             ctx.textAlign = 'right';
 
-            let prefixo = "";
-            let valorEmDestaque = v.displayValor;
-
-            if (v.displayValor.includes("R$")) {
-                const partes = v.displayValor.split("R$");
-                prefixo = partes[0].trim();
-                valorEmDestaque = "R$ " + partes[1].trim();
-            }
-
-            if (prefixo !== "") {
-                ctx.fillStyle = '#757575';
-                ctx.font = '14px Arial';
-                ctx.fillText(prefixo, largura - margem - 25, yAtual + 40);
-
-                ctx.fillStyle = '#00BD07';
-                ctx.font = 'bold 26px Arial';
-                ctx.fillText(valorEmDestaque, largura - margem - 25, yAtual + 70);
+            if (v.esgotado) {
+                ctx.fillStyle = '#F05A28';
+                ctx.font = 'bold 22px Arial';
+                ctx.fillText('ESGOTADO', largura - margem - 25, yAtual + 55);
             } else {
-                ctx.fillStyle = '#00BD07';
-                ctx.font = 'bold 24px Arial';
-                ctx.fillText(valorEmDestaque, largura - margem - 25, yAtual + 55);
+                let prefixo = "";
+                let valorEmDestaque = v.displayValor;
+
+                if (v.displayValor.includes("R$")) {
+                    const partes = v.displayValor.split("R$");
+                    prefixo = partes[0].trim();
+                    valorEmDestaque = "R$ " + partes[1].trim();
+                }
+
+                if (prefixo !== "") {
+                    ctx.fillStyle = '#757575';
+                    ctx.font = '14px Arial';
+                    ctx.fillText(prefixo, largura - margem - 25, yAtual + 40);
+
+                    ctx.fillStyle = '#00BD07';
+                    ctx.font = 'bold 26px Arial';
+                    ctx.fillText(valorEmDestaque, largura - margem - 25, yAtual + 70);
+                } else {
+                    ctx.fillStyle = '#00BD07';
+                    ctx.font = 'bold 24px Arial';
+                    ctx.fillText(valorEmDestaque, largura - margem - 25, yAtual + 55);
+                }
             }
 
             ctx.textAlign = 'left';
@@ -586,16 +632,23 @@
 
                 limparTudo();
 
-                const btn = document.getElementById('btn-copy-william');
+                const btn = document.getElementById(botaoId);
 
                 if (btn) {
+                    const textoOriginal = btn.dataset.originalText || btn.innerHTML;
+
                     btn.style.background = "#28a745";
-                    btn.innerHTML = `✅ COPIADO`;
+                    btn.innerHTML = "✅ OK";
 
                     setTimeout(() => {
-                        btn.style.background = "#303F9F";
-                        btn.innerHTML = "COPIAR TABELA";
-                    }, 3000);
+                        if (botaoId === 'btn-copy-william') {
+                            btn.style.background = "#303F9F";
+                        } else if (botaoId === 'btn-copy-william-esgotados') {
+                            btn.style.background = "#5f6368";
+                        }
+
+                        btn.innerHTML = textoOriginal;
+                    }, 2500);
                 }
             } catch (err) {
                 console.error(err);
@@ -604,7 +657,7 @@
         }, "image/png");
     }
 
-    function extrairDados() {
+    function extrairDados(incluirEsgotados = false, botaoId = 'btn-copy-william') {
         const credito = getCredito();
 
         const elementoData = document.querySelector(
@@ -643,9 +696,10 @@
                 ?.innerText
                 .replace(/[^0-9]/g, '') || "0";
 
-            const polt = parseInt(poltTxt);
+            const polt = parseInt(poltTxt, 10) || 0;
 
-            if (polt <= 0) return;
+            const textoLinha = normalizarTexto(linha.innerText);
+            const linhaTemEsgotado = textoLinha.includes('ESGOTADO');
 
             let valoresEncontrados = [];
 
@@ -654,7 +708,7 @@
             );
 
             for (let c of celulas) {
-                let txt = c.innerText.toUpperCase();
+                let txt = (c.innerText || '').toUpperCase();
 
                 if (
                     (txt.includes('BRL') || txt.includes('R$')) &&
@@ -673,22 +727,35 @@
                 }
             }
 
-            if (valoresEncontrados.length === 0) return;
+            const estaEsgotado = linhaTemEsgotado || polt <= 0;
 
-            let valorNovo = Math.min(...valoresEncontrados);
+            if (estaEsgotado && !incluirEsgotados) return;
+            if (!estaEsgotado && valoresEncontrados.length === 0) return;
 
-            let displayValor = "R$ " + valorNovo.toLocaleString('pt-BR', {
-                minimumFractionDigits: 2
-            });
+            let displayValor = "";
+            let infoLinha = "";
 
-            const textoPoltronas = polt === 1 ? "1 vaga" : `${polt} vagas`;
+            if (estaEsgotado) {
+                displayValor = "ESGOTADO";
+                infoLinha = "indisponível";
+            } else {
+                const valorNovo = Math.min(...valoresEncontrados);
+
+                displayValor = "R$ " + valorNovo.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2
+                });
+
+                const textoPoltronas = polt === 1 ? "1 vaga" : `${polt} vagas`;
+                infoLinha = `💺 ${textoPoltronas}`;
+            }
 
             viagens.push({
                 saida,
                 chegada,
                 servico,
                 displayValor,
-                textoPoltronas
+                infoLinha,
+                esgotado: estaEsgotado
             });
         });
 
@@ -699,9 +766,9 @@
                 dataTexto,
                 trechoInfo,
                 viagens
-            });
+            }, botaoId);
         } else {
-            alert("Nenhum horário com vaga disponível encontrado.");
+            alert("Nenhum horário encontrado.");
         }
     }
 
@@ -709,36 +776,55 @@
         injetarEstiloBotaoTabela();
 
         const temHorarios = document.querySelector('.service-col-3') !== null;
-        let btn = document.getElementById('btn-copy-william');
+
+        let wrap = document.getElementById('william-copy-buttons-wrap');
+        let btnDisponiveis = document.getElementById('btn-copy-william');
+        let btnComEsgotados = document.getElementById('btn-copy-william-esgotados');
 
         if (temHorarios) {
             const footer = encontrarFooterBotoes();
-
             if (!footer) return;
 
-            if (!btn) {
-                btn = document.createElement('button');
-                btn.id = 'btn-copy-william';
-                btn.innerHTML = 'COPIAR TABELA';
-                btn.onclick = extrairDados;
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.id = 'william-copy-buttons-wrap';
             }
 
-            btn.style.display = 'inline-block';
+            if (!btnDisponiveis) {
+                btnDisponiveis = document.createElement('button');
+                btnDisponiveis.id = 'btn-copy-william';
+                btnDisponiveis.className = 'william-copy-btn';
+                btnDisponiveis.innerHTML = 'TABELA';
+                btnDisponiveis.dataset.originalText = 'TABELA';
+                btnDisponiveis.onclick = () => extrairDados(false, 'btn-copy-william');
+                wrap.appendChild(btnDisponiveis);
+            }
+
+            if (!btnComEsgotados) {
+                btnComEsgotados = document.createElement('button');
+                btnComEsgotados.id = 'btn-copy-william-esgotados';
+                btnComEsgotados.className = 'william-copy-btn';
+                btnComEsgotados.innerHTML = '+ ESGOT.';
+                btnComEsgotados.dataset.originalText = '+ ESGOT.';
+                btnComEsgotados.onclick = () => extrairDados(true, 'btn-copy-william-esgotados');
+                wrap.appendChild(btnComEsgotados);
+            }
+
+            wrap.style.display = 'inline-flex';
 
             const botaoNovaPesquisa = encontrarBotaoNovaPesquisaDentroFooter(footer);
+            const ancoraDireta = encontrarFilhoDiretoDoFooter(footer, botaoNovaPesquisa);
 
-            if (botaoNovaPesquisa && botaoNovaPesquisa.parentElement) {
-                if (btn.parentElement !== footer) {
-                    footer.insertBefore(btn, botaoNovaPesquisa);
-                }
-            } else {
-                if (btn.parentElement !== footer) {
-                    footer.appendChild(btn);
+            if (wrap.parentElement !== footer) {
+                if (ancoraDireta) {
+                    footer.insertBefore(wrap, ancoraDireta);
+                } else {
+                    footer.appendChild(wrap);
                 }
             }
 
-        } else if (btn) {
-            btn.style.display = 'none';
+        } else if (wrap) {
+            wrap.style.display = 'none';
         }
     }
 
