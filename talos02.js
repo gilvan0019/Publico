@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Tallos02
 // @namespace    https://tallos.chat.full.tools
-// @version      1.1.0
-// @description  Copiar mensagens por clique/seleção + botão copiar telefone limpo + botões customizados
+// @version      1.2.0
+// @description  Copiar mensagens por clique/seleção + botão copiar telefone limpo + remover sugestão de resposta
 // @author       GILVAN
 // @match        https://app.tallos.com.br/app/chat*
 // @grant        GM_addStyle
@@ -49,6 +49,15 @@
       font-size:14px;
       box-shadow:0 2px 6px rgba(0,0,0,.25);
     }
+
+    /* Esconde o botão "Ver sugestão de resposta" */
+    button.suggestion-button.tg-btn_tertiary[title="Ver sugestão de resposta"],
+    button.suggestion-button.tg-btn_tertiary {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
   `);
 
   /* =========================================================
@@ -60,10 +69,14 @@
 
   function copiarTexto(texto, el) {
     if (!texto) return;
+
     navigator.clipboard.writeText(texto).then(() => {
       if (el) {
         el.classList.add('tallos-copiado');
-        setTimeout(() => el.classList.remove('tallos-copiado'), 500);
+
+        setTimeout(() => {
+          el.classList.remove('tallos-copiado');
+        }, 500);
       }
     });
   }
@@ -73,6 +86,7 @@
 
     msg.addEventListener('click', e => {
       e.stopPropagation();
+
       const sel = window.getSelection();
       const txtSel = sel?.toString().trim();
 
@@ -81,6 +95,7 @@
       } else {
         copiarTexto(msg.innerText.trim(), msg);
       }
+
       sel?.removeAllRanges();
     });
 
@@ -93,20 +108,46 @@
 
   function iniciarChatSeguro() {
     aplicarMensagens();
-    new MutationObserver(aplicarMensagens).observe(document.body, {
+
+    new MutationObserver(() => {
+      aplicarMensagens();
+      esconderSugestaoResposta();
+    }).observe(document.body, {
       childList: true,
       subtree: true
     });
   }
 
   /* =========================================================
-     ================== PARTE 2 — TELEFONE ===================
+     =========== PARTE 2 — REMOVER SUGESTÃO ==================
+     ========================================================= */
+
+  function esconderSugestaoResposta() {
+    document
+      .querySelectorAll(`
+        button.suggestion-button.tg-btn_tertiary,
+        button[title="Ver sugestão de resposta"],
+        button[aria-label="Ver sugestão de resposta"]
+      `)
+      .forEach(btn => {
+        btn.style.setProperty('display', 'none', 'important');
+        btn.style.setProperty('visibility', 'hidden', 'important');
+        btn.style.setProperty('opacity', '0', 'important');
+        btn.style.setProperty('pointer-events', 'none', 'important');
+      });
+  }
+
+  /* =========================================================
+     ================== PARTE 3 — TELEFONE ===================
      ========================================================= */
 
   const BOTAO_ID = 'tallos-btn-telefone';
 
   function limparTelefone(t) {
-    return t.replace(/\|/g,'').replace(/\s+/g,'').replace(/^55/,'');
+    return t
+      .replace(/\|/g, '')
+      .replace(/\s+/g, '')
+      .replace(/^55/, '');
   }
 
   function criarBotaoTelefone() {
@@ -118,16 +159,27 @@
 
     btn.onclick = async () => {
       const item = document.querySelector('.d-flex.align-items-center.list-item-heading');
-      if (!item) return alert('Telefone não encontrado');
+
+      if (!item) {
+        return alert('Telefone não encontrado');
+      }
 
       const cont = item.closest('.list-item') || item.parentElement;
       const telEl = cont?.querySelector('.text-muted');
-      if (!telEl) return alert('Telefone não encontrado');
+
+      if (!telEl) {
+        return alert('Telefone não encontrado');
+      }
 
       const tel = limparTelefone(telEl.innerText);
+
       await navigator.clipboard.writeText(tel);
+
       btn.innerText = 'Copiado';
-      setTimeout(()=>btn.innerText='Copiar Telefone',1500);
+
+      setTimeout(() => {
+        btn.innerText = 'Copiar Telefone';
+      }, 1500);
     };
 
     document.body.appendChild(btn);
@@ -139,6 +191,7 @@
 
   function verificarTelefone() {
     const existe = document.querySelector('.d-flex.align-items-center.list-item-heading');
+
     existe ? criarBotaoTelefone() : removerBotaoTelefone();
   }
 
@@ -149,10 +202,14 @@
   function startTudo() {
     iniciarChatSeguro();
     verificarTelefone();
+    esconderSugestaoResposta();
 
-    new MutationObserver(verificarTelefone).observe(document.body, {
-      childList:true,
-      subtree:true
+    new MutationObserver(() => {
+      verificarTelefone();
+      esconderSugestaoResposta();
+    }).observe(document.body, {
+      childList: true,
+      subtree: true
     });
   }
 
