@@ -204,7 +204,7 @@
     const menu = document.createElement('div');
     menu.style.cssText = `
       position:absolute;
-      bottom:28px;
+      bottom:16px;
       left:0;
       background:#fff;
       border:1px solid #ccc;
@@ -217,9 +217,9 @@
     `;
 
     [
-      ['➕ Nova mensagem', adicionarMensagem],
-      ['📤 Exportar TXT', exportarTXT],
-      ['📥 Importar TXT', importarTXT]
+      ['➕', adicionarMensagem],
+      ['📤', exportarTXT],
+      ['📥', importarTXT]
     ].forEach(([label, fn]) => {
       const b = document.createElement('button');
       b.innerText = label;
