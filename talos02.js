@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Tallos02
 // @namespace    https://tallos.chat.full.tools
-// @version      1.2.0
-// @description  Copiar mensagens por clique/seleção + botão copiar telefone limpo + remover sugestão de resposta
+// @version      2.3.0
+// @description  Copiar mensagens + telefone + trocar fila no bonequinho + remover sugestão + badges
 // @author       GILVAN
 // @match        https://app.tallos.com.br/app/chat*
 // @grant        GM_addStyle
@@ -11,9 +11,8 @@
 (function () {
   'use strict';
 
-  /* =========================================================
-     ======================= ESTILOS =========================
-     ========================================================= */
+  const BOTAO_ID = 'tallos-btn-telefone';
+
   GM_addStyle(`
     .bg-message-from-customer,
     .bg-message-from-agent,
@@ -35,34 +34,78 @@
       border-color: rgba(34,197,94,.6)!important;
     }
 
-    #tallos-btn-telefone{
-      position:fixed;
-      top:72px;
-      right:300px;
-      z-index:999999;
-      padding:6px 10px;
-      border-radius:8px;
-      border:1px solid #ccc;
-      background:#276d9b;
-      color:#fff;
-      cursor:pointer;
-      font-size:14px;
-      box-shadow:0 2px 6px rgba(0,0,0,.25);
+   #tallos-btn-telefone {
+  position: fixed;
+  top: 90px;
+  right: 430px;
+  z-index: 999999;
+  padding: 10px 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #4b5563, #1f2937);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  box-shadow:
+    0 6px 16px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.08);
+  transition: all .18s ease;
+}
+
+#tallos-btn-telefone:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #6b7280, #374151);
+  box-shadow:
+    0 10px 22px rgba(0,0,0,.28),
+    inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+#tallos-btn-telefone:active {
+  transform: scale(.97);
+}
+
+#tallos-btn-telefone::before {
+  content: "📞 ";
+  font-size: 14px;
+  opacity: .9;
+}
+
+    span[class*="Badge__Root"] {
+      min-width: 18px !important;
+      height: 18px !important;
+      padding: 0 6px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      font-size: 11px !important;
+      font-weight: bold !important;
+      border-radius: 999px !important;
+      line-height: 18px !important;
+      box-sizing: border-box !important;
     }
 
-    /* Esconde o botão "Ver sugestão de resposta" */
-    button.suggestion-button.tg-btn_tertiary[title="Ver sugestão de resposta"],
-    button.suggestion-button.tg-btn_tertiary {
+    button.suggestion-button.tg-btn_tertiary,
+    button[title="Ver sugestão de resposta"],
+    button[aria-label="Ver sugestão de resposta"] {
       display: none !important;
       visibility: hidden !important;
       opacity: 0 !important;
       pointer-events: none !important;
     }
-  `);
 
-  /* =========================================================
-     ================== PARTE 1 — CHAT =======================
-     ========================================================= */
+    div[class*="InlineGroup__Root"] div[class*="RoundedIcon__Root"],
+    div[class*="InlineGroup__Root"] div[class*="RoundedIcon__Root"] * {
+      display: none !important;
+      opacity: 0 !important;
+      width: 0 !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+    }
+  `);
 
   const MSG_SELECTOR =
     '.bg-message-from-customer, .bg-message-from-agent, .bg-message-from-employee';
@@ -73,10 +116,7 @@
     navigator.clipboard.writeText(texto).then(() => {
       if (el) {
         el.classList.add('tallos-copiado');
-
-        setTimeout(() => {
-          el.classList.remove('tallos-copiado');
-        }, 500);
+        setTimeout(() => el.classList.remove('tallos-copiado'), 500);
       }
     });
   }
@@ -106,48 +146,29 @@
     document.querySelectorAll(MSG_SELECTOR).forEach(prepararMensagem);
   }
 
-  function iniciarChatSeguro() {
-    aplicarMensagens();
-
-    new MutationObserver(() => {
-      aplicarMensagens();
-      esconderSugestaoResposta();
-    }).observe(document.body, {
-      childList: true,
-      subtree: true
+  function esconderSugestaoResposta() {
+    document.querySelectorAll(`
+      button.suggestion-button.tg-btn_tertiary,
+      button[title="Ver sugestão de resposta"],
+      button[aria-label="Ver sugestão de resposta"]
+    `).forEach(btn => {
+      btn.style.setProperty('display', 'none', 'important');
     });
   }
 
-  /* =========================================================
-     =========== PARTE 2 — REMOVER SUGESTÃO ==================
-     ========================================================= */
-
-  function esconderSugestaoResposta() {
-    document
-      .querySelectorAll(`
-        button.suggestion-button.tg-btn_tertiary,
-        button[title="Ver sugestão de resposta"],
-        button[aria-label="Ver sugestão de resposta"]
-      `)
-      .forEach(btn => {
-        btn.style.setProperty('display', 'none', 'important');
-        btn.style.setProperty('visibility', 'hidden', 'important');
-        btn.style.setProperty('opacity', '0', 'important');
-        btn.style.setProperty('pointer-events', 'none', 'important');
-      });
+  function limparTelefone(t) {
+    return t.replace(/\D/g, '').replace(/^55/, '');
   }
 
-  /* =========================================================
-     ================== PARTE 3 — TELEFONE ===================
-     ========================================================= */
+  function buscarTelefoneNaTela() {
+    const elementos = [...document.querySelectorAll('p, span, div')];
 
-  const BOTAO_ID = 'tallos-btn-telefone';
+    const encontrado = elementos.find(el => {
+      const txt = el.innerText?.trim();
+      return /^\d{11,13}$/.test(txt);
+    });
 
-  function limparTelefone(t) {
-    return t
-      .replace(/\|/g, '')
-      .replace(/\s+/g, '')
-      .replace(/^55/, '');
+    return encontrado ? encontrado.innerText.trim() : null;
   }
 
   function criarBotaoTelefone() {
@@ -158,55 +179,93 @@
     btn.innerText = 'Copiar Telefone';
 
     btn.onclick = async () => {
-      const item = document.querySelector('.d-flex.align-items-center.list-item-heading');
+      const telefone = buscarTelefoneNaTela();
 
-      if (!item) {
-        return alert('Telefone não encontrado');
-      }
+      if (!telefone) return alert('Telefone não encontrado');
 
-      const cont = item.closest('.list-item') || item.parentElement;
-      const telEl = cont?.querySelector('.text-muted');
-
-      if (!telEl) {
-        return alert('Telefone não encontrado');
-      }
-
-      const tel = limparTelefone(telEl.innerText);
-
-      await navigator.clipboard.writeText(tel);
+      await navigator.clipboard.writeText(limparTelefone(telefone));
 
       btn.innerText = 'Copiado';
-
-      setTimeout(() => {
-        btn.innerText = 'Copiar Telefone';
-      }, 1500);
+      setTimeout(() => btn.innerText = 'Copiar Telefone', 1500);
     };
 
     document.body.appendChild(btn);
   }
 
-  function removerBotaoTelefone() {
-    document.getElementById(BOTAO_ID)?.remove();
+  function atualizarBadge() {
+    document.querySelectorAll('span[class*="Badge__Root"]').forEach(badge => {
+      const valor = parseInt(badge.textContent.trim(), 10);
+
+      if (isNaN(valor)) return;
+
+      if (valor === 0) {
+        badge.style.setProperty('background-color', '#2563eb', 'important');
+        badge.style.setProperty('border-color', '#2563eb', 'important');
+      } else {
+        badge.style.setProperty('background-color', '#E60F57', 'important');
+        badge.style.setProperty('border-color', '#E60F57', 'important');
+      }
+
+      badge.style.setProperty('color', '#fff', 'important');
+    });
   }
 
-  function verificarTelefone() {
-    const existe = document.querySelector('.d-flex.align-items-center.list-item-heading');
+  function alternarFila() {
+    const dropdown = document.querySelector('div[class*="InlineGroup__Root"]');
+    if (!dropdown) return;
 
-    existe ? criarBotaoTelefone() : removerBotaoTelefone();
+    const tituloAtual = dropdown.innerText.toLowerCase();
+
+    dropdown.click();
+
+    setTimeout(() => {
+      const opcoes = [...document.querySelectorAll('div[class*="SelectOption__StyledListItem"]')];
+
+      if (tituloAtual.includes('meus atendimentos')) {
+        const fila = opcoes.find(el =>
+          el.innerText.toLowerCase().includes('fila de espera')
+        );
+        fila?.click();
+      } else {
+        const meus = opcoes.find(el =>
+          el.innerText.toLowerCase().includes('meus atendimentos')
+        );
+        meus?.click();
+      }
+    }, 250);
   }
 
-  /* =========================================================
-     ======================= START ===========================
-     ========================================================= */
+  function transformarBonecoEmFila() {
+    const boneco = document.querySelector('span[data-testid="badge-queue-await"]');
+    if (!boneco) return;
+
+    if (boneco.dataset.tallosFila) return;
+
+    boneco.style.cursor = 'pointer';
+    boneco.title = 'Trocar Fila';
+
+    boneco.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      alternarFila();
+    }, true);
+
+    boneco.dataset.tallosFila = 'true';
+  }
 
   function startTudo() {
-    iniciarChatSeguro();
-    verificarTelefone();
+    aplicarMensagens();
+    criarBotaoTelefone();
+    transformarBonecoEmFila();
     esconderSugestaoResposta();
+    atualizarBadge();
 
     new MutationObserver(() => {
-      verificarTelefone();
+      aplicarMensagens();
       esconderSugestaoResposta();
+      atualizarBadge();
+      transformarBonecoEmFila();
     }).observe(document.body, {
       childList: true,
       subtree: true
