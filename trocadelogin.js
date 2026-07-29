@@ -18,15 +18,15 @@
     // ==================================================
     const LOGINS = [
         {
-            nome: 'Gilvan',
-            usuario: '230425i',
-            senha: 'guana123'
+            nome: 'Diego',
+            usuario: '230351db',
+            senha: 'Guana123.'
         },
 
         {
-            nome: 'Hellen',
-            usuario: '230425u',
-            senha: 'guana123.'
+            nome: 'Thaynara',
+            usuario: '230351g',
+            senha: 'guana123'
         }
     ];
 
