@@ -1,0 +1,359 @@
+// ==UserScript==
+// @name         SmartBus - Tabela Resumo (Ponto de Venda / Usuário / Data / Venda Líquida)
+// @namespace    http://tampermonkey.net/
+// @version      1.5
+// @description  Botão flutuante que gera uma tabela resumida (Ponto de Venda, Usuário, Data, Venda Líquida e Total) a partir da tabela "Resumo dos caixas pesquisados" do SmartBus, com opção de enviar pro formato Data/Dia/Agente/Dia da Semana/Suporte/Canoa/Top/Vale/Total na aba TESTE da planilha TABELA DE VENDAS (o nome do Agente é resolvido pela aba FUNCIONARIOS, coluna LOGINS)
+// @author       Gilmario
+// @match        https://prod-guanabara-frontoffice-smartbus.smarttravelit.com/*
+// @match        https://*.smarttravelit.com/*
+// @grant        GM_xmlhttpRequest
+// @connect      script.google.com
+// @connect      script.googleusercontent.com
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  // ---------- integração com a planilha (Google Apps Script Web App) ----------
+  // Cole aqui a URL "/exec" do Web App publicado a partir do Apps Script padrão
+  // (veja o arquivo tabela-vendas-apps-script.gs que te mandei junto).
+  const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzLNr82p4tjT7RY-e4rYjoch-VZTBcZb2_oHbh7s0PgMrU8w2cF2ULQAC6i2OhsrdMv/exec';
+
+  // ---------- utilidades ----------
+
+  function normalizar(txt) {
+    return (txt || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toUpperCase()
+      .trim();
+  }
+
+  // ---------- conversão pro formato Data/Dia/Agente/Dia da Semana/Suporte/Canoa/Top/Vale/Total ----------
+
+  // Categorias possíveis (batem com as colunas Suporte/Canoa/Top/Vale da aba "Base de dados").
+  // A categoria de cada linha é descoberta procurando esses nomes dentro do texto do "Ponto de Venda"
+  // (ex.: "AG VALE VIAGENS - RUS - CE" contém "VALE" -> categoria Vale).
+  const CATEGORIAS = ['SUPORTE', 'CANOA', 'TOP', 'VALE'];
+
+  // O "Usuário" do SmartBus pode ser um apelido/login diferente do nome oficial do agente
+  // (ex.: "Gil Silva" é o mesmo agente que "Gilvan Lima"). Em vez de manter esse mapeamento
+  // aqui no script, a resolução final é feita do lado do Apps Script, consultando a coluna
+  // "LOGINS" da aba FUNCIONARIOS — assim quem mantém a lista de apelidos é a própria planilha.
+  // Aqui só normaliza a caixa do texto (evita nomes em CAIXA ALTA) como fallback visual.
+  function limparNomeExibicao(usuario) {
+    return usuario
+      .toLowerCase()
+      .split(' ')
+      .map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : p))
+      .join(' ');
+  }
+
+  function detectarCategoria(ponto) {
+    const chave = normalizar(ponto);
+    return CATEGORIAS.find((c) => chave.includes(c)) || null;
+  }
+
+  const DIAS_SEMANA = ['DOM.', 'SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.'];
+
+  function partesData(dataBr) {
+    // dataBr no formato DD/MM/AAAA
+    const [dia, mes, ano] = dataBr.split('/').map((n) => parseInt(n, 10));
+    const dt = new Date(ano, (mes || 1) - 1, dia || 1);
+    return { dia, diaDaSemana: DIAS_SEMANA[dt.getDay()] };
+  }
+
+  // Agrupa as linhas extraídas do SmartBus por Agente+Data e distribui o valor na
+  // coluna certa (Suporte/Canoa/Top/Vale) de acordo com o Ponto de Venda de cada linha.
+  function montarLinhasBaseDeDados(dados) {
+    const semCategoria = new Set();
+    const porAgente = new Map();
+
+    dados.forEach((d) => {
+      const categoria = detectarCategoria(d.ponto);
+      if (!categoria) {
+        semCategoria.add(d.ponto);
+        return;
+      }
+      const agente = limparNomeExibicao(d.usuario);
+      const chave = agente + '|' + d.data;
+      if (!porAgente.has(chave)) {
+        const { dia, diaDaSemana } = partesData(d.data);
+        porAgente.set(chave, {
+          data: d.data,
+          dia,
+          agente,
+          diaDaSemana,
+          suporte: 0,
+          canoa: 0,
+          top: 0,
+          vale: 0,
+        });
+      }
+      porAgente.get(chave)[categoria.toLowerCase()] += d.liquida;
+    });
+
+    if (semCategoria.size) {
+      alert(
+        'Não consegui identificar a categoria (Suporte/Canoa/Top/Vale) destes Pontos de Venda — essas linhas NÃO foram enviadas:\n' +
+          Array.from(semCategoria).join('\n')
+      );
+    }
+
+    return Array.from(porAgente.values()).map((l) => ({
+      ...l,
+      total: l.suporte + l.canoa + l.top + l.vale,
+    }));
+  }
+
+  function parseMoeda(txt) {
+    if (!txt) return 0;
+    const limpo = txt.replace(/BRL/gi, '').trim().replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(limpo);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function formatarMoeda(n) {
+    return 'BRL ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // ---------- extração da tabela ----------
+
+  function extrairDados() {
+    const tabelas = Array.from(document.querySelectorAll('table'));
+    let tabelaAlvo = null;
+    let headerTextos = null;
+
+    for (const tabela of tabelas) {
+      const ths = tabela.querySelectorAll('thead th, thead td');
+      if (!ths.length) continue;
+      const textos = Array.from(ths).map((th) => normalizar(th.textContent));
+      if (
+        textos.some((t) => t.includes('PONTO DE VENDA')) &&
+        textos.some((t) => t.includes('VENDA LIQUIDA'))
+      ) {
+        tabelaAlvo = tabela;
+        headerTextos = textos;
+        break;
+      }
+    }
+
+    if (!tabelaAlvo) {
+      alert('Não encontrei a tabela "Resumo dos caixas pesquisados" nesta página.');
+      return null;
+    }
+
+    const idx = {
+      ponto: headerTextos.findIndex((t) => t.includes('PONTO DE VENDA')),
+      usuario: headerTextos.findIndex((t) => t.includes('USUARIO')),
+      data: headerTextos.findIndex((t) => t.includes('ABERTURA')),
+      liquida: headerTextos.findIndex((t) => t.includes('VENDA LIQUIDA')),
+    };
+
+    const faltando = Object.entries(idx)
+      .filter(([, i]) => i === -1)
+      .map(([campo]) => campo);
+    if (faltando.length) {
+      alert('Não encontrei as colunas: ' + faltando.join(', '));
+      return null;
+    }
+
+    const linhas = tabelaAlvo.querySelectorAll('tbody tr');
+    const dados = [];
+    linhas.forEach((tr) => {
+      const tds = tr.querySelectorAll('td');
+      if (!tds.length) return;
+      const ponto = tds[idx.ponto]?.textContent.trim() || '';
+      const usuario = tds[idx.usuario]?.textContent.trim() || '';
+      const dataTxt = tds[idx.data]?.textContent.trim() || '';
+      const data = dataTxt.split(' ')[0]; // mantém só a data (sem o horário)
+      const liquidaTxt = tds[idx.liquida]?.textContent.trim() || '';
+      const liquida = parseMoeda(liquidaTxt);
+      dados.push({ ponto, usuario, data, liquida });
+    });
+
+    return dados;
+  }
+
+  // ---------- modal com o resultado ----------
+
+  function montarModal(dados) {
+    const total = dados.reduce((acc, d) => acc + d.liquida, 0);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'psv-overlay';
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      inset: '0',
+      background: 'rgba(0,0,0,0.5)',
+      zIndex: 999999,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    });
+
+    const box = document.createElement('div');
+    Object.assign(box.style, {
+      background: '#fff',
+      borderRadius: '8px',
+      padding: '20px',
+      maxHeight: '85vh',
+      overflow: 'auto',
+      width: 'min(700px, 92vw)',
+      fontFamily: 'Arial, sans-serif',
+      boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+    });
+
+    let linhasHtml = '';
+    dados.forEach((d, i) => {
+      const bg = i % 2 === 0 ? '#f5f5f5' : '#ffffff';
+      linhasHtml += `
+        <tr style="background:${bg};">
+          <td style="padding:6px; border-bottom:1px solid #ddd;">${d.ponto}</td>
+          <td style="padding:6px; border-bottom:1px solid #ddd;">${d.usuario}</td>
+          <td style="padding:6px; border-bottom:1px solid #ddd;">${d.data}</td>
+          <td style="padding:6px; border-bottom:1px solid #ddd; text-align:right;">${formatarMoeda(d.liquida)}</td>
+        </tr>`;
+    });
+
+    box.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2 style="margin:0; font-size:17px; color:#1a237e;">Resumo: Ponto de Venda / Usuário / Data / Venda Líquida</h2>
+        <button id="psv-fechar" style="border:none; background:#e53935; color:#fff; padding:6px 12px; border-radius:4px; cursor:pointer;">Fechar</button>
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr style="background:#1a237e; color:#fff;">
+            <th style="padding:6px; text-align:left;">Ponto de Venda</th>
+            <th style="padding:6px; text-align:left;">Usuário</th>
+            <th style="padding:6px; text-align:left;">Data</th>
+            <th style="padding:6px; text-align:right;">Venda Líquida</th>
+          </tr>
+        </thead>
+        <tbody>${linhasHtml}</tbody>
+        <tfoot>
+          <tr style="font-weight:bold; background:#c5cae9;">
+            <td style="padding:6px;" colspan="3">TOTAL</td>
+            <td style="padding:6px; text-align:right;">${formatarMoeda(total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div style="margin-top:12px; text-align:right; display:flex; justify-content:flex-end; gap:8px;">
+        <button id="psv-enviar" style="border:none; background:#2e7d32; color:#fff; padding:8px 14px; border-radius:4px; cursor:pointer;">Enviar (Data/Agente/Suporte/Canoa/Top/Vale) para TESTE</button>
+        <button id="psv-copiar" style="border:none; background:#1a237e; color:#fff; padding:8px 14px; border-radius:4px; cursor:pointer;">Copiar (para colar no Excel/Sheets)</button>
+      </div>
+    `;
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    document.getElementById('psv-fechar').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    document.getElementById('psv-copiar').addEventListener('click', () => {
+      let tsv = 'Ponto de Venda\tUsuário\tData\tVenda Líquida\n';
+      dados.forEach((d) => {
+        tsv += `${d.ponto}\t${d.usuario}\t${d.data}\t${d.liquida.toFixed(2).replace('.', ',')}\n`;
+      });
+      tsv += `TOTAL\t\t\t${total.toFixed(2).replace('.', ',')}\n`;
+
+      const btn = document.getElementById('psv-copiar');
+      navigator.clipboard
+        .writeText(tsv)
+        .then(() => {
+          const original = btn.textContent;
+          btn.textContent = 'Copiado!';
+          setTimeout(() => {
+            btn.textContent = original;
+          }, 1500);
+        })
+        .catch(() => alert('Não foi possível copiar automaticamente. Selecione a tabela manualmente.'));
+    });
+
+    document.getElementById('psv-enviar').addEventListener('click', () => {
+      if (!WEBAPP_URL || WEBAPP_URL.includes('COLE_AQUI')) {
+        alert('Antes de enviar, configure a WEBAPP_URL no início do script com a URL do seu Web App (veja as instruções).');
+        return;
+      }
+
+      const linhasBaseDeDados = montarLinhasBaseDeDados(dados);
+      if (!linhasBaseDeDados.length) {
+        return; // nada pra enviar (provavelmente nenhuma linha teve categoria identificada)
+      }
+
+      const btn = document.getElementById('psv-enviar');
+      const original = btn.textContent;
+      btn.textContent = 'Enviando...';
+      btn.disabled = true;
+
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: WEBAPP_URL,
+        headers: { 'Content-Type': 'application/json' },
+        data: JSON.stringify({ linhas: linhasBaseDeDados }),
+        onload: (resposta) => {
+          btn.disabled = false;
+          try {
+            const json = JSON.parse(resposta.responseText);
+            if (json.ok) {
+              btn.textContent = `Enviado! (${json.linhasInseridas} linhas, ${json.apelidosCarregados ?? '?'} apelidos)`;
+            } else {
+              btn.textContent = original;
+              alert('A planilha recusou o envio: ' + (json.erro || 'erro desconhecido.'));
+            }
+          } catch (e) {
+            btn.textContent = original;
+            alert(
+              'Resposta inesperada da planilha (HTTP ' + resposta.status + '):\n' +
+                resposta.responseText.slice(0, 500)
+            );
+          }
+          setTimeout(() => {
+            btn.textContent = original;
+          }, 3000);
+        },
+        onerror: (erro) => {
+          btn.disabled = false;
+          btn.textContent = original;
+          alert('Não foi possível enviar para a planilha (HTTP ' + (erro && erro.status) + '). Confira a WEBAPP_URL e sua conexão.');
+        },
+      });
+    });
+  }
+
+  // ---------- botão flutuante ----------
+
+  function criarBotao() {
+    if (document.getElementById('psv-botao')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'psv-botao';
+    btn.textContent = '📊 Gerar Tabela';
+    Object.assign(btn.style, {
+      position: 'fixed',
+      bottom: '24px',
+      right: '24px',
+      zIndex: 999998,
+      background: '#1a237e',
+      color: '#fff',
+      border: 'none',
+      borderRadius: '24px',
+      padding: '12px 18px',
+      fontSize: '14px',
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+    });
+    btn.addEventListener('click', () => {
+      const dados = extrairDados();
+      if (dados && dados.length) montarModal(dados);
+      else if (dados) alert('A tabela foi encontrada, mas não há linhas de dados no momento.');
+    });
+    document.body.appendChild(btn);
+  }
+
+  criarBotao();
+})();
+
